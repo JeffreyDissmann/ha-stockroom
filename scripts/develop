@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd "$(dirname "$0")/.."
+
+# Activate the local virtual environment if present.
+if [[ -f ".venv/bin/activate" ]]; then
+    # shellcheck disable=SC1091
+    source .venv/bin/activate
+fi
+
+if [[ ! -d "${PWD}/config" ]]; then
+    mkdir -p "${PWD}/config"
+    hass --config "${PWD}/config" --script ensure_config
+fi
+
+# Symlink the integration into the HA config so it is discovered as a
+# custom_component, reachable at http://localhost:8123.
+mkdir -p "${PWD}/config/custom_components"
+if [[ ! -e "${PWD}/config/custom_components/stockroom" ]]; then
+    ln -s "${PWD}/custom_components/stockroom" \
+        "${PWD}/config/custom_components/stockroom"
+fi
+
+hass --config "${PWD}/config" --debug

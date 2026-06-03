@@ -1,0 +1,25 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Lint and pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+      - name: Ruff lint
+        run: ruff check custom_components/stockroom tests
+      - name: Ruff format check
+        run: ruff format --check custom_components/stockroom tests
+      - name: Run pytest
+        run: pytest --cov=custom_components/stockroom --cov-report=term-missing

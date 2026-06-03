@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+
+# Virtual environments
+.venv/
+venv/
+
+# Test / coverage artifacts
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# HA dev runtime data (keep configuration.yaml)
+config/.storage/
+config/home-assistant_v2.db
+config/home-assistant_v2.db-shm
+config/home-assistant_v2.db-wal
+config/home-assistant.log*
+config/.HA_VERSION
+config/.ha_run.lock
+config/tts/
+config/.cloud/
+config/blueprints/
+config/custom_components/
+
+# Claude Code local settings (machine-specific)
+.claude/settings.local.json
