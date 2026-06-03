@@ -37,13 +37,109 @@
   "options": {
     "step": {
       "init": {
-        "title": "Stockroom options",
+        "title": "Stockroom",
+        "description": "Link Home Assistant devices to Stockroom items, or change settings.",
+        "menu_options": {
+          "link_device": "Link a device to an existing Stockroom item",
+          "create_and_link": "Create a Stockroom item from a device and link it",
+          "unlink_device": "Unlink a device",
+          "bulk_create_from_area": "Bulk create Stockroom items from an area",
+          "settings": "Settings (polling interval)"
+        }
+      },
+      "settings": {
+        "title": "Settings",
         "data": {
           "scan_interval_minutes": "Polling interval"
         },
         "data_description": {
           "scan_interval_minutes": "How often (in minutes) to poll Stockroom for statistics and linked-item updates."
         }
+      },
+      "link_device": {
+        "title": "Select a device",
+        "description": "Choose the Home Assistant device to link to a Stockroom item.",
+        "data": {
+          "device_id": "Device"
+        }
+      },
+      "link_select_item": {
+        "title": "Select a Stockroom item",
+        "description": "Choose the Stockroom item to link to {device_name}.",
+        "data": {
+          "item_id": "Stockroom item"
+        }
+      },
+      "create_and_link": {
+        "title": "Select a device",
+        "description": "Choose the Home Assistant device to create a new Stockroom item for.",
+        "data": {
+          "device_id": "Device"
+        }
+      },
+      "create_item_details": {
+        "title": "New Stockroom item",
+        "description": "Create and link a Stockroom item for {device_name}.",
+        "data": {
+          "name": "Name",
+          "type": "Type",
+          "parent_id": "Parent (room or container)"
+        }
+      },
+      "unlink_device": {
+        "title": "Unlink a device",
+        "description": "Choose the linked device to unlink from its Stockroom item.",
+        "data": {
+          "device_id": "Linked device"
+        }
+      },
+      "bulk_create_from_area": {
+        "title": "Select an area",
+        "description": "Choose a Home Assistant area to create Stockroom items for its devices.",
+        "data": {
+          "area": "Area"
+        }
+      },
+      "bulk_select_devices": {
+        "title": "Select devices",
+        "description": "Choose the unlinked devices in {area_name} to create Stockroom items for.",
+        "data": {
+          "device_ids": "Devices"
+        }
+      },
+      "bulk_create_details": {
+        "title": "Create items",
+        "description": "A Stockroom item will be created and linked for each of the {count} selected device(s).",
+        "data": {
+          "type": "Type"
+        }
+      }
+    },
+    "error": {
+      "device_already_linked": "That device is already linked to a Stockroom item.",
+      "device_has_no_entity": "That device has no entities, so it cannot be linked.",
+      "link_conflict": "Cannot create the link: the device or item is already linked.",
+      "token_read_only": "This needs a Stockroom token with the write ability, but the configured token is read-only.",
+      "cannot_connect": "Failed to connect to Stockroom.",
+      "create_failed": "Failed to create the Stockroom item. Check the details and try again.",
+      "no_devices_selected": "Select at least one device to continue.",
+      "not_linked": "That device is no longer linked."
+    },
+    "abort": {
+      "no_links": "No devices are linked yet.",
+      "no_unlinked_items": "No unlinked Stockroom items are available.",
+      "no_unlinked_ha_devices": "No unlinked devices are available in that area.",
+      "missing_device": "No device was selected.",
+      "missing_area": "No area was selected.",
+      "cannot_connect": "Failed to connect to Stockroom."
+    }
+  },
+  "selector": {
+    "item_type": {
+      "options": {
+        "room": "Room",
+        "container": "Container",
+        "item": "Item"
       }
     }
   },

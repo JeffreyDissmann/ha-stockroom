@@ -35,5 +35,10 @@ ATTR_TYPE = "type"
 ATTR_PARENT_ID = "parent_id"
 ATTR_QUERY = "query"
 
+# Options-flow (GUI linking wizard) fields.
+CONF_DEVICE_ID = "device_id"
+CONF_DEVICE_IDS = "device_ids"
+CONF_AREA = "area"
+
 ITEM_TYPES = ("room", "container", "item")
 DEFAULT_ITEM_TYPE = "item"

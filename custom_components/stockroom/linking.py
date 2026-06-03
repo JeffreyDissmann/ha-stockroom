@@ -96,9 +96,14 @@ async def apply_link(
     ha_device_id: str,
     item_id: int,
     friendly_name: str,
+    options: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create the 1:1 link, write the Stockroom back-link, return new options."""
-    ha_device_to_item, item_to_ha_device = get_link_maps(config_entry)
+    """Create the 1:1 link, write the Stockroom back-link, return new options.
+
+    Pass ``options`` to build on an in-progress options dict (e.g. when linking
+    several devices in a row before persisting), instead of the stored options.
+    """
+    ha_device_to_item, item_to_ha_device = get_link_maps(config_entry, options)
 
     if (existing := ha_device_to_item.get(ha_device_id)) is not None and (
         existing != item_id
@@ -135,7 +140,9 @@ async def apply_link(
             ha_device_id, configuration_url=api.get_item_url(item_id)
         )
 
-    return build_updated_options(config_entry, ha_device_to_item, item_to_ha_device)
+    return build_updated_options(
+        config_entry, ha_device_to_item, item_to_ha_device, options
+    )
 
 
 async def remove_link(
