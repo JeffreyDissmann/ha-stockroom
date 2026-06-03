@@ -1,0 +1,95 @@
+link_item:
+  name: Link item
+  description: >
+    Links a Home Assistant device to an existing Stockroom item and writes a
+    deep link back into Stockroom.
+  fields:
+    entity_id:
+      name: Entity
+      description: >
+        Any entity whose device should be linked. The device is resolved from
+        this entity.
+      required: true
+      selector:
+        entity:
+    item_id:
+      name: Stockroom item ID
+      description: Numeric ID of the Stockroom item to link to.
+      required: true
+      example: 42
+      selector:
+        number:
+          min: 1
+          mode: box
+    friendly_name:
+      name: Friendly name
+      description: >
+        Optional name to store on the Stockroom link. Defaults to the device
+        name.
+      required: false
+      selector:
+        text:
+
+unlink_item:
+  name: Unlink item
+  description: >
+    Removes the link between a Home Assistant device and its Stockroom item.
+  fields:
+    entity_id:
+      name: Entity
+      description: Any entity whose device is currently linked.
+      required: true
+      selector:
+        entity:
+
+create_and_link_item:
+  name: Create and link item
+  description: >
+    Creates a new Stockroom item for an unmatched Home Assistant device and
+    links it.
+  fields:
+    entity_id:
+      name: Entity
+      description: Any entity whose device should get a new Stockroom item.
+      required: true
+      selector:
+        entity:
+    name:
+      name: Name
+      description: Name for the new Stockroom item. Defaults to the device name.
+      required: false
+      selector:
+        text:
+    type:
+      name: Type
+      description: Stockroom item type to create.
+      required: false
+      default: item
+      selector:
+        select:
+          options:
+            - room
+            - container
+            - item
+    parent_id:
+      name: Parent ID
+      description: Optional Stockroom parent (room or container) ID.
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box
+
+search:
+  name: Search
+  description: >
+    Searches Stockroom for items and returns the top hits with their location
+    path.
+  fields:
+    query:
+      name: Query
+      description: Text to search for (for example, "where is the drill?").
+      required: true
+      example: drill
+      selector:
+        text:

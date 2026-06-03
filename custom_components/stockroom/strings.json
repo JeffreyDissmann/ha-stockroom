@@ -1,0 +1,160 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Connect to Stockroom",
+        "description": "Enter the address of your Stockroom instance and an API token. The token is validated against your Stockroom account.",
+        "data": {
+          "host": "Host",
+          "token": "API token",
+          "name": "Name"
+        },
+        "data_description": {
+          "host": "The base address of your Stockroom instance, including host and port.",
+          "token": "A Stockroom API token with at least the read ability (write is needed for linking).",
+          "name": "Name shown in Home Assistant (default: Stockroom)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate with Stockroom",
+        "description": "The API token for {host} is no longer valid. Enter a new token.",
+        "data": {
+          "token": "API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This Stockroom instance is already configured.",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Stockroom options",
+        "data": {
+          "scan_interval_minutes": "Polling interval"
+        },
+        "data_description": {
+          "scan_interval_minutes": "How often (in minutes) to poll Stockroom for statistics and linked-item updates."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_items": {
+        "name": "Total items"
+      },
+      "total_value": {
+        "name": "Total value"
+      },
+      "rooms": {
+        "name": "Rooms"
+      },
+      "containers": {
+        "name": "Containers"
+      },
+      "items": {
+        "name": "Items"
+      },
+      "linked_item": {
+        "name": "Stockroom item"
+      }
+    }
+  },
+  "services": {
+    "link_item": {
+      "name": "Link item",
+      "description": "Links a Home Assistant device to an existing Stockroom item and writes a deep link back into Stockroom.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any entity whose device should be linked. The device is resolved from this entity."
+        },
+        "item_id": {
+          "name": "Stockroom item ID",
+          "description": "Numeric ID of the Stockroom item to link to."
+        },
+        "friendly_name": {
+          "name": "Friendly name",
+          "description": "Optional name to store on the Stockroom link. Defaults to the device name."
+        }
+      }
+    },
+    "unlink_item": {
+      "name": "Unlink item",
+      "description": "Removes the link between a Home Assistant device and its Stockroom item.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any entity whose device is currently linked."
+        }
+      }
+    },
+    "create_and_link_item": {
+      "name": "Create and link item",
+      "description": "Creates a new Stockroom item for an unmatched Home Assistant device and links it.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any entity whose device should get a new Stockroom item."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Name for the new Stockroom item. Defaults to the device name."
+        },
+        "type": {
+          "name": "Type",
+          "description": "Stockroom item type to create."
+        },
+        "parent_id": {
+          "name": "Parent ID",
+          "description": "Optional Stockroom parent (room or container) ID."
+        }
+      }
+    },
+    "search": {
+      "name": "Search",
+      "description": "Searches Stockroom for items and returns the top hits with their location path.",
+      "fields": {
+        "query": {
+          "name": "Query",
+          "description": "Text to search for (for example, \"where is the drill?\")."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "integration_not_loaded": {
+      "message": "The Stockroom integration is not loaded."
+    },
+    "entity_not_found": {
+      "message": "Entity {entity_id} was not found in the entity registry."
+    },
+    "entity_has_no_device": {
+      "message": "Entity {entity_id} is not attached to a device."
+    },
+    "token_read_only": {
+      "message": "This action needs a Stockroom token with the write ability, but the configured token is read-only."
+    },
+    "invalid_token": {
+      "message": "The configured Stockroom token is invalid. Re-authenticate the integration."
+    },
+    "validation_failed": {
+      "message": "Stockroom rejected the request: {message}"
+    },
+    "link_conflict": {
+      "message": "Cannot create the link: {detail}"
+    },
+    "not_linked": {
+      "message": "Cannot unlink: {detail}"
+    }
+  }
+}
