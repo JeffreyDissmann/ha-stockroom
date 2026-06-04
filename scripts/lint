@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
+# Lint and format-check in the Python 3.13 environment.
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-if [[ -f ".venv/bin/activate" ]]; then
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
+if [[ ! -x ".venv/bin/ruff" ]]; then
+    echo "Test environment not found — running scripts/setup..."
+    scripts/setup
 fi
 
-ruff check custom_components/stockroom tests
-ruff format --check custom_components/stockroom tests
+.venv/bin/ruff check custom_components/stockroom tests
+.venv/bin/ruff format --check custom_components/stockroom tests

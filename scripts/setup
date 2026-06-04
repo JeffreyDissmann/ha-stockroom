@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
+# Provision both dev environments:
+#   .venv     Python 3.13 — tests/lint (pytest-homeassistant-custom-component)
+#   .venv314  Python 3.14 — runtime for scripts/develop (Home Assistant 2026.3+)
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-# Create a local virtual environment on first run.
+# 1) Test/lint environment (Python 3.13).
 if [[ ! -d ".venv" ]]; then
     python3 -m venv .venv
 fi
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install --requirement requirements-test.txt
 
-# shellcheck disable=SC1091
-source .venv/bin/activate
+# 2) Runtime environment (Python 3.14 + Home Assistant 2026.3+).
+#    Home Assistant 2026.3+ requires Python >= 3.14.2; uv fetches it as a
+#    standalone build so no system Python 3.14 is needed.
+.venv/bin/uv python install 3.14
+if [[ ! -d ".venv314" ]]; then
+    .venv/bin/uv venv --python 3.14 .venv314
+fi
+.venv/bin/uv pip install --python .venv314/bin/python --requirement requirements.txt
 
-python3 -m pip install --upgrade pip
-python3 -m pip install --requirement requirements.txt
-python3 -m pip install --requirement requirements-test.txt
+echo "Setup complete. Run 'scripts/develop' to start Home Assistant."

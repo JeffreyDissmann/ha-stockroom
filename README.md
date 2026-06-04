@@ -99,14 +99,20 @@ response_variable: hits
 
 ## Development
 
-This repo follows the Home Assistant `integration_blueprint` layout.
+This repo follows the Home Assistant `integration_blueprint` layout, or open it in the included **devcontainer** (VS Code → Reopen in Container).
 
 ```bash
-scripts/setup     # create .venv and install HA + test dependencies
+scripts/setup     # provision both environments (see below)
 scripts/develop   # run Home Assistant at http://localhost:8123 with this integration
 scripts/lint      # ruff check + format check
 scripts/test      # pytest (boots a real HA core with mocked Stockroom HTTP)
 ```
+
+`scripts/setup` creates two environments, because the runtime and the test
+harness need different Python versions:
+
+- **`.venv` (Python 3.13)** — tests and lint, via `pytest-homeassistant-custom-component` (which pins the Home Assistant core it boots).
+- **`.venv314` (Python 3.14)** — the live dev instance (`scripts/develop`), running Home Assistant 2026.3+ so local brand images work. Python 3.14.2 is fetched automatically with `uv`; no system Python 3.14 is required.
 
 ### End-to-end checklist (optional, manual)
 

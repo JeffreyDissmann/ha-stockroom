@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
+# Run Home Assistant (2026.3+) from the Python 3.14 runtime environment,
+# reachable at http://localhost:8123, with this integration loaded.
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-# Activate the local virtual environment if present.
-if [[ -f ".venv/bin/activate" ]]; then
-    # shellcheck disable=SC1091
-    source .venv/bin/activate
+# Ensure the runtime environment exists (provisions it on first run).
+if [[ ! -x ".venv314/bin/hass" ]]; then
+    echo "Runtime environment not found — running scripts/setup..."
+    scripts/setup
 fi
 
 if [[ ! -d "${PWD}/config" ]]; then
     mkdir -p "${PWD}/config"
-    hass --config "${PWD}/config" --script ensure_config
+    .venv314/bin/hass --config "${PWD}/config" --script ensure_config
 fi
 
-# Symlink the integration into the HA config so it is discovered as a
-# custom_component, reachable at http://localhost:8123.
+# Symlink the integration into the HA config so it loads as a custom component.
 mkdir -p "${PWD}/config/custom_components"
 if [[ ! -e "${PWD}/config/custom_components/stockroom" ]]; then
     ln -s "${PWD}/custom_components/stockroom" \
         "${PWD}/config/custom_components/stockroom"
 fi
 
-hass --config "${PWD}/config" --debug
+.venv314/bin/hass --config "${PWD}/config" --debug

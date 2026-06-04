@@ -1,1 +1,4 @@
-homeassistant==2026.2.3
+# Runtime dependency for the local dev instance (scripts/develop).
+# Home Assistant 2026.3+ is needed for local brand images and requires
+# Python >= 3.14.2, which scripts/setup provisions with uv.
+homeassistant==2026.3.4
