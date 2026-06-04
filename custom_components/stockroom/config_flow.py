@@ -58,7 +58,13 @@ from .const import (
     MAX_SCAN_INTERVAL_MINUTES,
     MIN_SCAN_INTERVAL_MINUTES,
 )
-from .linking import apply_link, get_link_maps, remove_link
+from .linking import (
+    apply_link,
+    build_updated_area_options,
+    get_area_room_map,
+    get_link_maps,
+    remove_link,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -211,6 +217,7 @@ class StockroomOptionsFlow(OptionsFlow):
                 "create_and_link",
                 "unlink_device",
                 "bulk_create_from_area",
+                "link_area",
                 "settings",
             ],
         )
@@ -532,7 +539,15 @@ class StockroomOptionsFlow(OptionsFlow):
             ),
         }
         if parent_options:
-            schema_dict[vol.Optional(ATTR_PARENT_ID)] = selector.SelectSelector(
+            mapped_room = self._mapped_room_for_device(device_id)
+            valid_values = {option["value"] for option in parent_options}
+            if mapped_room is not None and str(mapped_room) in valid_values:
+                parent_marker: Any = vol.Optional(
+                    ATTR_PARENT_ID, default=str(mapped_room)
+                )
+            else:
+                parent_marker = vol.Optional(ATTR_PARENT_ID)
+            schema_dict[parent_marker] = selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=parent_options, mode=selector.SelectSelectorMode.DROPDOWN
                 )
@@ -695,6 +710,57 @@ class StockroomOptionsFlow(OptionsFlow):
             description_placeholders={"count": str(len(self._bulk_device_ids))},
         )
 
+    # -- Link an area to a room ------------------------------------------
+
+    async def async_step_link_area(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Map a Home Assistant area to a Stockroom room (for auto-placement)."""
+        if user_input is not None:
+            area_room = get_area_room_map(self.config_entry)
+            room_raw = user_input.get(CONF_ROOM_ID) or ""
+            if room_raw:
+                area_room[user_input[CONF_AREA]] = int(room_raw)
+            else:
+                area_room.pop(user_input[CONF_AREA], None)
+            return self.async_create_entry(
+                title="",
+                data=build_updated_area_options(self.config_entry, area_room),
+            )
+
+        try:
+            rooms = await self._api.async_get_rooms()
+        except StockroomApiError:
+            return self.async_abort(reason="cannot_connect")
+        room_options = _build_unique_options(
+            [
+                (room["id"], _node_label(room, path_key="location_path"))
+                for room in rooms
+                if isinstance(room.get("id"), int)
+            ]
+        )
+        if not room_options:
+            return self.async_abort(reason="no_rooms")
+        # A blank choice clears any existing mapping for the chosen area.
+        options = [
+            selector.SelectOptionDict(value="", label="—"),
+            *room_options,
+        ]
+
+        return self.async_show_form(
+            step_id="link_area",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_AREA): selector.AreaSelector(),
+                    vol.Required(CONF_ROOM_ID, default=""): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options, mode=selector.SelectSelectorMode.DROPDOWN
+                        )
+                    ),
+                }
+            ),
+        )
+
     # -- Shared helpers --------------------------------------------------
 
     def _validate_linkable_device(self, device_id: str) -> str | None:
@@ -771,13 +837,14 @@ class StockroomOptionsFlow(OptionsFlow):
                 entity_id = _primary_entity_id(self.hass, device_id)
                 if entity_id is None:
                     continue
-                created = await self._api.async_create_item(
-                    {
-                        "name": self._device_name(device_id),
-                        "type": item_type,
-                        **self._device_details(device_id),
-                    }
-                )
+                payload: dict[str, Any] = {
+                    "name": self._device_name(device_id),
+                    "type": item_type,
+                    **self._device_details(device_id),
+                }
+                if (room := self._mapped_room_for_device(device_id)) is not None:
+                    payload["parent_id"] = room
+                created = await self._api.async_create_item(payload)
                 item_id = created.get("id")
                 if not isinstance(item_id, int):
                     continue
@@ -914,6 +981,15 @@ class StockroomOptionsFlow(OptionsFlow):
         if serial := getattr(device, "serial_number", None):
             details[ATTR_SERIAL_NUMBER] = serial
         return details
+
+    def _mapped_room_for_device(self, device_id: str | None) -> int | None:
+        """Return the Stockroom room mapped to the device's HA area, if any."""
+        if device_id is None:
+            return None
+        device = dr.async_get(self.hass).async_get(device_id)
+        if device is None or device.area_id is None:
+            return None
+        return get_area_room_map(self.config_entry).get(device.area_id)
 
 
 def _node_label(node: dict[str, Any], *, path_key: str) -> str:

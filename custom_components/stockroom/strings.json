@@ -44,6 +44,7 @@
           "create_and_link": "Create a Stockroom item from a device and link it",
           "unlink_device": "Unlink a device",
           "bulk_create_from_area": "Bulk create Stockroom items from an area",
+          "link_area": "Link a Home Assistant area to a Stockroom room",
           "settings": "Settings (polling interval)"
         }
       },
@@ -165,6 +166,14 @@
         "description": "A Stockroom item will be created and linked for each of the {count} selected device(s).",
         "data": {
           "type": "Type"
+        }
+      },
+      "link_area": {
+        "title": "Link an area to a room",
+        "description": "Map a Home Assistant area to a Stockroom room. New items created from devices in that area are then placed in the mapped room by default. Leave the room blank to remove a mapping.",
+        "data": {
+          "area": "Home Assistant area",
+          "room_id": "Stockroom room"
         }
       }
     },

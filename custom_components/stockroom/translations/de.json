@@ -44,6 +44,7 @@
           "create_and_link": "Aus einem Gerät ein Stockroom-Objekt erstellen und verknüpfen",
           "unlink_device": "Verknüpfung eines Geräts aufheben",
           "bulk_create_from_area": "Stockroom-Objekte für einen Bereich gesammelt erstellen",
+          "link_area": "Einen Home-Assistant-Bereich mit einem Stockroom-Raum verknüpfen",
           "settings": "Einstellungen (Abrufintervall)"
         }
       },
@@ -165,6 +166,14 @@
         "description": "Für jedes der {count} ausgewählten Geräte wird ein Stockroom-Objekt erstellt und verknüpft.",
         "data": {
           "type": "Typ"
+        }
+      },
+      "link_area": {
+        "title": "Bereich mit Raum verknüpfen",
+        "description": "Verknüpfe einen Home-Assistant-Bereich mit einem Stockroom-Raum. Neue Objekte, die aus Geräten in diesem Bereich erstellt werden, werden dann standardmäßig im verknüpften Raum abgelegt. Lass den Raum leer, um eine Verknüpfung zu entfernen.",
+        "data": {
+          "area": "Home-Assistant-Bereich",
+          "room_id": "Stockroom-Raum"
         }
       }
     },

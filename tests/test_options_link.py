@@ -5,17 +5,22 @@ from __future__ import annotations
 from aioresponses import aioresponses
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import (
+    area_registry as ar,
+    device_registry as dr,
+    entity_registry as er,
+)
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.stockroom.config_flow import _build_unique_options
 from custom_components.stockroom.const import (
+    CONF_AREA_LINKS,
     CONF_HA_DEVICE_TO_ITEM,
     CONF_ITEM_TO_HA_DEVICE,
     CONF_LINKS,
     DOMAIN,
 )
-from custom_components.stockroom.linking import get_link_maps
+from custom_components.stockroom.linking import get_area_room_map, get_link_maps
 
 from .const import (
     ITEM_42_LINKED_ELSEWHERE,
@@ -455,6 +460,70 @@ async def test_unlink_with_no_links_aborts(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_links"
+
+
+async def test_link_area_sets_mapping(hass: HomeAssistant) -> None:
+    """The wizard stores an HA area -> Stockroom room mapping."""
+    area = ar.async_get(hass).async_get_or_create("Garage")
+    with aioresponses() as mocked:
+        mocked.get(URL_ROOMS, payload=ROOMS_PAYLOAD, repeat=True)
+        entry = await _setup(hass, mocked)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "link_area"}
+        )
+        assert result["step_id"] == "link_area"
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"area": area.id, "room_id": "1"}
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert get_area_room_map(entry) == {area.id: 1}
+
+
+async def test_create_item_defaults_parent_from_area(hass: HomeAssistant) -> None:
+    """Creating an item auto-places it in the room mapped to the device's area."""
+    area = ar.async_get(hass).async_get_or_create("Garage")
+    device_id = _make_device(hass)
+    dr.async_get(hass).async_update_device(device_id, area_id=area.id)
+
+    created = {"data": {"id": 90, "name": "Test Device", "type": {"value": "item"}}}
+    rooms = {
+        "data": [{"id": 1, "name": "Keller", "location_path": ""}],
+        "meta": {"last_page": 1},
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_ITEMS, payload=rooms, repeat=True)
+        mocked.post(URL_ITEMS, status=201, payload=created, repeat=True)
+        mocked.put(URL_HA_LINK, status=201, payload=LINK_RESPONSE, repeat=True)
+        entry = await _setup(hass, mocked, options={CONF_AREA_LINKS: {area.id: 1}})
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "create_and_link"}
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"device_id": device_id}
+        )
+        # Submit without touching the parent field; it defaults to the mapped room.
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"name": "Test Device", "type": "item"}
+        )
+        await hass.async_block_till_done()
+
+        post_request = next(
+            req
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "POST"
+        )
+        body = post_request.kwargs["json"]
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert body["parent_id"] == 1
 
 
 def test_build_unique_options_dedupes_and_disambiguates() -> None:

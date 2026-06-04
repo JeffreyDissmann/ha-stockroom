@@ -20,6 +20,9 @@ CONF_LINKS = "links"
 CONF_HA_DEVICE_TO_ITEM = "ha_device_to_item"
 CONF_ITEM_TO_HA_DEVICE = "item_to_ha_device"
 
+# Options storage for the HA area -> Stockroom room map.
+CONF_AREA_LINKS = "area_links"
+
 # Services.
 SERVICE_LINK_ITEM = "link_item"
 SERVICE_UNLINK_ITEM = "unlink_item"

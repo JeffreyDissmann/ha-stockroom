@@ -13,12 +13,45 @@ from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .api import StockroomApiClient
 from .const import (
+    CONF_AREA_LINKS,
     CONF_HA_DEVICE_TO_ITEM,
     CONF_ITEM_TO_HA_DEVICE,
     CONF_LINKS,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_area_room_map(
+    config_entry: ConfigEntry,
+    options: Mapping[str, Any] | None = None,
+) -> dict[str, int]:
+    """Return the normalized HA-area -> Stockroom-room id map from options."""
+    source_options = options if options is not None else config_entry.options
+    raw = source_options.get(CONF_AREA_LINKS, {})
+    area_room: dict[str, int] = {}
+    if isinstance(raw, dict):
+        for area_id, room_id in raw.items():
+            try:
+                area_room[str(area_id)] = int(room_id)
+            except (TypeError, ValueError):
+                continue
+    return area_room
+
+
+def build_updated_area_options(
+    config_entry: ConfigEntry,
+    area_room: dict[str, int],
+    options: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a new options dict carrying the given area -> room map."""
+    source_options = options if options is not None else config_entry.options
+    return {
+        **source_options,
+        CONF_AREA_LINKS: {
+            area_id: int(room_id) for area_id, room_id in area_room.items()
+        },
+    }
 
 
 def get_link_maps(
