@@ -4,8 +4,8 @@ __pycache__/
 *.pyd
 .DS_Store
 
-# Virtual environments
-.venv/
+# Virtual environments (.venv, .venv314, etc.)
+.venv*/
 venv/
 
 # Test / coverage artifacts
@@ -14,18 +14,9 @@ venv/
 .coverage
 htmlcov/
 
-# HA dev runtime data (keep configuration.yaml)
-config/.storage/
-config/home-assistant_v2.db
-config/home-assistant_v2.db-shm
-config/home-assistant_v2.db-wal
-config/home-assistant.log*
-config/.HA_VERSION
-config/.ha_run.lock
-config/tts/
-config/.cloud/
-config/blueprints/
-config/custom_components/
+# HA dev runtime data — ignore everything except configuration.yaml
+/config/*
+!/config/configuration.yaml
 
 # Claude Code local settings (machine-specific)
 .claude/settings.local.json
