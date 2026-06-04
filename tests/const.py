@@ -20,6 +20,7 @@ URL_STATISTICS = re.compile(r".*/api/v1/statistics$")
 URL_ITEMS = re.compile(r".*/api/v1/items(\?.*)?$")
 URL_ITEM = re.compile(r".*/api/v1/items/\d+$")
 URL_SEARCH = re.compile(r".*/api/v1/search(\?.*)?$")
+URL_ROOMS = re.compile(r".*/api/v1/rooms(\?.*)?$")
 URL_HA_LINK = re.compile(r".*/api/v1/items/\d+/home-assistant-link$")
 
 USER_PAYLOAD = {"id": 1, "name": "Jeff", "email": "jeff@example.com"}
@@ -63,4 +64,42 @@ SEARCH_PAYLOAD = {
             "thumb_url": None,
         }
     ]
+}
+
+ROOMS_PAYLOAD = {
+    "data": [
+        {
+            "id": 1,
+            "name": "Keller",
+            "icon": None,
+            "parent_id": None,
+            "location_path": "Keller",
+            "children_count": 2,
+        },
+        {
+            "id": 2,
+            "name": "KR - Regal 1",
+            "icon": None,
+            "parent_id": 1,
+            "location_path": "Keller",
+            "children_count": 0,
+        },
+    ]
+}
+
+ITEM_42_LINKED_ELSEWHERE = {
+    "data": {
+        "id": 42,
+        "name": "Cordless Drill",
+        "type": {"value": "item", "label": "Item"},
+        "location_path": "Garage / Tool Cabinet",
+        "quantity": 1,
+        "home_assistant_link": {
+            "ha_entity_id": "sensor.other",
+            "ha_device_id": "other-device",
+            "friendly_name": "Old HA device",
+            "url": "http://old-ha/config/devices/device/other-device",
+            "instance_id": "some-other-instance-id",
+        },
+    }
 }

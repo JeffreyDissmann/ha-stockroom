@@ -39,6 +39,8 @@ ATTR_QUERY = "query"
 CONF_DEVICE_ID = "device_id"
 CONF_DEVICE_IDS = "device_ids"
 CONF_AREA = "area"
+CONF_ROOM_ID = "room_id"
+CONF_REPLACE = "replace"
 
 ITEM_TYPES = ("room", "container", "item")
 DEFAULT_ITEM_TYPE = "item"

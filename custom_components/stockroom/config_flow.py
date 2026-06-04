@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping
 import logging
 from typing import Any
@@ -18,6 +19,7 @@ from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
     entity_registry as er,
+    instance_id,
     selector,
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -28,6 +30,7 @@ from .api import (
     StockroomApiError,
     StockroomAuthenticationError,
     StockroomConnectionError,
+    StockroomNotFoundError,
     StockroomPermissionError,
     normalize_stockroom_host,
 )
@@ -35,10 +38,13 @@ from .const import (
     ATTR_ITEM_ID,
     ATTR_NAME,
     ATTR_PARENT_ID,
+    ATTR_QUERY,
     ATTR_TYPE,
     CONF_AREA,
     CONF_DEVICE_ID,
     CONF_DEVICE_IDS,
+    CONF_REPLACE,
+    CONF_ROOM_ID,
     CONF_SCAN_INTERVAL_MINUTES,
     DEFAULT_ITEM_TYPE,
     DEFAULT_NAME,
@@ -180,6 +186,10 @@ class StockroomOptionsFlow(OptionsFlow):
         self._selected_area_id: str | None = None
         self._bulk_device_ids: list[str] = []
         self._pending_options: dict[str, Any] | None = None
+        self._search_results: list[selector.SelectOptionDict] = []
+        self._browse_room_id: int | None = None
+        self._pending_item_id: int | None = None
+        self._pending_conflict_name: str | None = None
 
     @property
     def _api(self) -> StockroomApiClient:
@@ -245,7 +255,7 @@ class StockroomOptionsFlow(OptionsFlow):
                 errors["base"] = error
             else:
                 self._selected_device_id = user_input[CONF_DEVICE_ID]
-                return await self.async_step_link_select_item()
+                return await self.async_step_link_method()
 
         return self.async_show_form(
             step_id="link_device",
@@ -255,45 +265,177 @@ class StockroomOptionsFlow(OptionsFlow):
             errors=errors,
         )
 
-    async def async_step_link_select_item(
+    async def async_step_link_method(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Select an existing Stockroom item to link the device to."""
-        device_id = self._selected_device_id
-        if device_id is None:
-            return self.async_abort(reason="missing_device")
+        """Choose how to find the Stockroom item to link."""
+        return self.async_show_menu(
+            step_id="link_method",
+            menu_options=["link_search", "link_browse", "link_enter_id"],
+            description_placeholders={
+                "device_name": self._device_name(self._selected_device_id)
+            },
+        )
 
+    async def async_step_link_search(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Search Stockroom by name and show the top matches."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            error = await self._async_try_link(device_id, int(user_input[ATTR_ITEM_ID]))
-            if error is None:
-                return self.async_create_entry(
-                    title="",
-                    data=self._pending_options or dict(self.config_entry.options),
-                )
-            errors["base"] = error
-
-        try:
-            options = await self._async_item_options(has_ha_link=0)
-        except StockroomApiError:
-            return self.async_abort(reason="cannot_connect")
-        if not options:
-            return self.async_abort(reason="no_unlinked_items")
+            query = (user_input.get(ATTR_QUERY) or "").strip()
+            if not query:
+                errors["base"] = "no_results"
+            else:
+                try:
+                    self._search_results = await self._async_search_options(query)
+                except StockroomApiError:
+                    errors["base"] = "cannot_connect"
+                else:
+                    if self._search_results:
+                        return await self.async_step_link_search_results()
+                    errors["base"] = "no_results"
 
         return self.async_show_form(
-            step_id="link_select_item",
+            step_id="link_search",
+            data_schema=vol.Schema({vol.Required(ATTR_QUERY): selector.TextSelector()}),
+            errors=errors,
+            description_placeholders={
+                "device_name": self._device_name(self._selected_device_id)
+            },
+        )
+
+    async def async_step_link_search_results(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick an item from the search results."""
+        if user_input is not None:
+            return await self._async_select_item(int(user_input[ATTR_ITEM_ID]))
+
+        return self.async_show_form(
+            step_id="link_search_results",
             data_schema=vol.Schema(
                 {
                     vol.Required(ATTR_ITEM_ID): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=options,
+                            options=self._search_results,
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
                     )
                 }
             ),
-            errors=errors,
-            description_placeholders={"device_name": self._device_name(device_id)},
+            description_placeholders={
+                "device_name": self._device_name(self._selected_device_id)
+            },
+        )
+
+    async def async_step_link_browse(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick a room to browse for an unlinked item."""
+        if user_input is not None:
+            self._browse_room_id = int(user_input[CONF_ROOM_ID])
+            return await self.async_step_link_browse_items()
+
+        try:
+            rooms = await self._api.async_get_rooms()
+        except StockroomApiError:
+            return self.async_abort(reason="cannot_connect")
+        options = _build_unique_options(
+            [
+                (room["id"], _node_label(room, path_key="location_path"))
+                for room in rooms
+                if isinstance(room.get("id"), int)
+            ]
+        )
+        if not options:
+            return self.async_abort(reason="no_rooms")
+
+        return self.async_show_form(
+            step_id="link_browse",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ROOM_ID): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options, mode=selector.SelectSelectorMode.DROPDOWN
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_link_browse_items(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick an unlinked item within the chosen room's subtree."""
+        if user_input is not None:
+            return await self._async_select_item(int(user_input[ATTR_ITEM_ID]))
+
+        try:
+            items = await self._api.async_get_all_items(
+                room=self._browse_room_id, has_ha_link=0
+            )
+        except StockroomApiError:
+            return self.async_abort(reason="cannot_connect")
+        options = self._result_options(items, path_key="location_path")
+        if not options:
+            return self.async_abort(reason="no_unlinked_items")
+
+        return self.async_show_form(
+            step_id="link_browse_items",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(ATTR_ITEM_ID): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options, mode=selector.SelectSelectorMode.DROPDOWN
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_link_enter_id(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enter a Stockroom item ID directly."""
+        if user_input is not None:
+            return await self._async_select_item(int(user_input[ATTR_ITEM_ID]))
+
+        return self.async_show_form(
+            step_id="link_enter_id",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(ATTR_ITEM_ID): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, step=1, mode=selector.NumberSelectorMode.BOX
+                        )
+                    )
+                }
+            ),
+            description_placeholders={
+                "device_name": self._device_name(self._selected_device_id)
+            },
+        )
+
+    async def async_step_link_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm replacing a link owned by another Home Assistant instance."""
+        if user_input is not None:
+            if user_input.get(CONF_REPLACE):
+                return await self._async_do_link_and_finish(self._pending_item_id)
+            return self.async_abort(reason="link_not_replaced")
+
+        return self.async_show_form(
+            step_id="link_confirm",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_REPLACE, default=False): selector.BooleanSelector()}
+            ),
+            description_placeholders={
+                "device_name": self._device_name(self._selected_device_id),
+                "item_id": str(self._pending_item_id),
+                "friendly_name": self._pending_conflict_name or "another instance",
+            },
         )
 
     # -- Create and link a new item --------------------------------------
@@ -346,7 +488,7 @@ class StockroomOptionsFlow(OptionsFlow):
             errors["base"] = error
 
         try:
-            parent_options = await self._async_item_options(types=("room", "container"))
+            parent_options = await self._async_parent_options()
         except StockroomApiError:
             parent_options = []
 
@@ -626,28 +768,90 @@ class StockroomOptionsFlow(OptionsFlow):
         self._pending_options = new_options
         return None
 
-    async def _async_item_options(
-        self, *, has_ha_link: int | None = None, types: tuple[str, ...] = ()
+    def _result_options(
+        self,
+        raw: list[dict[str, Any]],
+        *,
+        path_key: str,
+        extra_exclude: set[int] = frozenset(),
     ) -> list[selector.SelectOptionDict]:
-        """Fetch items and build dropdown options labelled by name and location."""
-        items: list[dict[str, Any]] = []
-        if types:
-            for item_type in types:
-                items.extend(await self._api.async_get_all_items(type=item_type))
-        else:
-            items.extend(await self._api.async_get_all_items(has_ha_link=has_ha_link))
-
-        options: list[selector.SelectOptionDict] = []
-        for item in items:
+        """Build item options, excluding linked items, labelled unambiguously."""
+        _, item_to_ha_device = get_link_maps(self.config_entry)
+        excluded = set(item_to_ha_device) | set(extra_exclude)
+        entries: list[tuple[int, str]] = []
+        for item in raw:
             item_id = item.get("id")
-            if not isinstance(item_id, int):
+            if not isinstance(item_id, int) or item_id in excluded:
                 continue
-            name = item.get("name") or f"Item {item_id}"
-            path = item.get("location_path") or ""
-            label = f"{name} — {path}" if path else str(name)
-            options.append(selector.SelectOptionDict(value=str(item_id), label=label))
-        options.sort(key=lambda option: option["label"].lower())
-        return options
+            entries.append((item_id, _node_label(item, path_key=path_key)))
+        return _build_unique_options(entries)
+
+    async def _async_linked_item_ids(self) -> set[int]:
+        """Return ids of items already linked to Home Assistant in Stockroom."""
+        items = await self._api.async_get_all_items(has_ha_link=1)
+        return {item["id"] for item in items if isinstance(item.get("id"), int)}
+
+    async def _async_search_options(
+        self, query: str
+    ) -> list[selector.SelectOptionDict]:
+        """Search Stockroom, excluding items already linked to Home Assistant."""
+        results = await self._api.async_search(query)
+        linked_ids = await self._async_linked_item_ids()
+        return self._result_options(results, path_key="path", extra_exclude=linked_ids)
+
+    async def _async_parent_options(self) -> list[selector.SelectOptionDict]:
+        """Build options for rooms and containers usable as a parent."""
+        items: list[dict[str, Any]] = []
+        for item_type in ("room", "container"):
+            items.extend(await self._api.async_get_all_items(type=item_type))
+        entries: list[tuple[int, str]] = [
+            (item["id"], _node_label(item, path_key="location_path"))
+            for item in items
+            if isinstance(item.get("id"), int)
+        ]
+        return _build_unique_options(entries)
+
+    async def _async_link_status(self, item_id: int) -> tuple[str, str | None]:
+        """Return ('free'|'ours'|'elsewhere', friendly_name) for an item.
+
+        Raises a Stockroom API error if the item cannot be fetched.
+        """
+        item = await self._api.async_get_item(item_id)
+        link = item.get("home_assistant_link")
+        if not isinstance(link, dict):
+            return "free", None
+        our_instance = await instance_id.async_get(self.hass)
+        if link.get("instance_id") == our_instance:
+            return "ours", None
+        name = link.get("friendly_name")
+        return "elsewhere", name if isinstance(name, str) and name else None
+
+    async def _async_select_item(self, item_id: int) -> ConfigFlowResult:
+        """Run the safety check, then link or route to a replace confirmation."""
+        try:
+            status, friendly_name = await self._async_link_status(item_id)
+        except StockroomNotFoundError:
+            return self.async_abort(reason="item_not_found")
+        except StockroomApiError:
+            return self.async_abort(reason="cannot_connect")
+        if status == "elsewhere":
+            self._pending_item_id = item_id
+            self._pending_conflict_name = friendly_name
+            return await self.async_step_link_confirm()
+        return await self._async_do_link_and_finish(item_id)
+
+    async def _async_do_link_and_finish(self, item_id: int) -> ConfigFlowResult:
+        """Create the link and finish, or abort with a clear reason."""
+        error = await self._async_try_link(self._selected_device_id, item_id)
+        if error == "link_conflict":
+            return self.async_abort(reason="link_conflict")
+        if error == "token_read_only":
+            return self.async_abort(reason="token_read_only")
+        if error is not None:
+            return self.async_abort(reason="cannot_connect")
+        return self.async_create_entry(
+            title="", data=self._pending_options or dict(self.config_entry.options)
+        )
 
     def _unlinked_devices_in_area(self, area_id: str) -> list[str]:
         """Return ids of unlinked, entity-bearing devices in an area."""
@@ -666,6 +870,54 @@ class StockroomOptionsFlow(OptionsFlow):
         if device is None:
             return device_id
         return device.name_by_user or device.name or device_id
+
+
+def _node_label(node: dict[str, Any], *, path_key: str) -> str:
+    """Build a 'Name — location' label for a room/item.
+
+    Stockroom's ``location_path`` is the path to the node's *location* (its
+    ancestors), so it usually omits the node's own name. Show the name, with the
+    location for context — unless the path already ends with the name (some
+    nodes return a full self-inclusive path) or equals it.
+    """
+    node_id = node.get("id")
+    name = str(node.get("name") or f"#{node_id}")
+    path = str(node.get(path_key) or "").strip()
+    if not path or path == name:
+        return name
+    if path.endswith(name):
+        return path
+    return f"{name} — {path}"
+
+
+def _build_unique_options(
+    entries: list[tuple[int, str]],
+) -> list[selector.SelectOptionDict]:
+    """Build sorted dropdown options, deduped by id and disambiguated by label.
+
+    Stockroom can hold several rooms/items sharing a name (and location path).
+    Entries are first deduplicated by id (in case a list is returned more than
+    once), then any label shared by multiple ids gets an ``(#id)`` suffix so
+    every option is distinguishable.
+    """
+    seen: set[int] = set()
+    unique: list[tuple[int, str]] = []
+    for item_id, label in entries:
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        unique.append((item_id, label))
+
+    label_counts = Counter(label for _, label in unique)
+    options = [
+        selector.SelectOptionDict(
+            value=str(item_id),
+            label=f"{label} (#{item_id})" if label_counts[label] > 1 else label,
+        )
+        for item_id, label in unique
+    ]
+    options.sort(key=lambda option: option["label"].lower())
+    return options
 
 
 def _primary_entity_id(hass: HomeAssistant, device_id: str) -> str | None:
