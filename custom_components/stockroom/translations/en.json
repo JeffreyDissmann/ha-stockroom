@@ -45,6 +45,7 @@
           "unlink_device": "Unlink a device",
           "bulk_create_from_area": "Bulk create Stockroom items from an area",
           "link_area": "Link a Home Assistant area to a Stockroom room",
+          "repair": "Repair links",
           "settings": "Settings (polling interval)"
         }
       },
@@ -175,6 +176,13 @@
           "area": "Home Assistant area",
           "room_id": "Stockroom room"
         }
+      },
+      "repair": {
+        "title": "Repair links",
+        "description": "Reconcile Home Assistant with Stockroom. {refresh_count} link(s) will be refreshed, {remove_count} stale link(s) (device removed) will be deleted, and {adopt_count} Stockroom link(s) point at devices Home Assistant isn't tracking. Choose which of those to adopt, then submit to apply.",
+        "data": {
+          "adopt": "Adopt these links"
+        }
       }
     },
     "error": {
@@ -195,6 +203,7 @@
       "no_unlinked_ha_devices": "No unlinked devices are available in that area.",
       "missing_device": "No device was selected.",
       "missing_area": "No area was selected.",
+      "nothing_to_repair": "Everything is already in sync — nothing to repair.",
       "item_not_found": "That Stockroom item was not found.",
       "link_conflict": "That device or item is already linked.",
       "token_read_only": "This needs a Stockroom token with the write ability, but the configured token is read-only.",

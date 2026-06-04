@@ -21,6 +21,7 @@ URL_ITEMS = re.compile(r".*/api/v1/items(\?.*)?$")
 URL_ITEM = re.compile(r".*/api/v1/items/\d+$")
 URL_SEARCH = re.compile(r".*/api/v1/search(\?.*)?$")
 URL_ROOMS = re.compile(r".*/api/v1/rooms(\?.*)?$")
+URL_HA_LINKS = re.compile(r".*/api/v1/home-assistant-links(\?.*)?$")
 URL_HA_LINK = re.compile(r".*/api/v1/items/\d+/home-assistant-link$")
 
 USER_PAYLOAD = {"id": 1, "name": "Jeff", "email": "jeff@example.com"}

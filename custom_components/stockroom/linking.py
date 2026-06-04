@@ -8,7 +8,11 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, instance_id
+from homeassistant.helpers import (
+    device_registry as dr,
+    entity_registry as er,
+    instance_id,
+)
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .api import StockroomApiClient
@@ -224,3 +228,55 @@ def _clear_configuration_url_if_matching(
     device_url = (device.configuration_url or "").rstrip("/")
     if device_url == item_url:
         device_registry.async_update_device(ha_device_id, configuration_url=None)
+
+
+def primary_entity_id(hass: HomeAssistant, device_id: str) -> str | None:
+    """Return a representative entity id for a device, preferring a primary one."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_device(
+        registry, device_id, include_disabled_entities=True
+    )
+    if not entries:
+        return None
+    for entry in entries:
+        if not entry.disabled and entry.entity_category is None:
+            return entry.entity_id
+    return entries[0].entity_id
+
+
+def device_friendly_name(hass: HomeAssistant, device_id: str) -> str:
+    """Return a human-friendly name for a device."""
+    device = dr.async_get(hass).async_get(device_id)
+    if device is None:
+        return device_id
+    return device.name_by_user or device.name or device_id
+
+
+async def async_refresh_link(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    api: StockroomApiClient,
+    device_id: str,
+    item_id: int | None = None,
+) -> None:
+    """Re-push a device's Home Assistant link (refresh url / entity / name).
+
+    Used to keep the Stockroom link current when a device is renamed and by the
+    repair flow. No-op if the device is not linked or has no usable entity.
+    """
+    if item_id is None:
+        ha_device_to_item, _ = get_link_maps(config_entry)
+        item_id = ha_device_to_item.get(device_id)
+    if item_id is None:
+        return
+    entity_id = primary_entity_id(hass, device_id)
+    if entity_id is None:
+        return
+    await api.async_set_item_ha_link(
+        item_id,
+        ha_entity_id=entity_id,
+        ha_device_id=device_id,
+        friendly_name=device_friendly_name(hass, device_id),
+        url=get_ha_device_url(hass, device_id),
+        instance_id=await instance_id.async_get(hass),
+    )

@@ -22,6 +22,7 @@ from .const import (
     MOCK_TOKEN,
     STATISTICS_PAYLOAD,
     URL_HA_LINK,
+    URL_HA_LINKS,
     URL_ITEM,
     URL_ITEMS,
     URL_STATISTICS,
@@ -167,3 +168,29 @@ async def test_get_item_unwraps_data(session: aiohttp.ClientSession) -> None:
         item = await _client(session).async_get_item(42)
 
     assert item["name"] == "Cordless Drill"
+
+
+async def test_get_ha_links(session: aiohttp.ClientSession) -> None:
+    """async_get_ha_links returns items with their embedded link object."""
+    payload = {
+        "data": [
+            {
+                "id": 42,
+                "name": "Cordless Drill",
+                "location_path": "Garage",
+                "home_assistant_link": {
+                    "ha_device_id": "dev-1",
+                    "ha_entity_id": "sensor.drill",
+                    "friendly_name": "Cordless Drill",
+                    "instance_id": "abc",
+                },
+            }
+        ],
+        "meta": {"current_page": 1, "per_page": 100, "total": 1, "last_page": 1},
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_HA_LINKS, payload=payload)
+        links = await _client(session).async_get_ha_links()
+
+    assert links[0]["id"] == 42
+    assert links[0]["home_assistant_link"]["ha_device_id"] == "dev-1"

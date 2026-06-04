@@ -45,6 +45,7 @@
           "unlink_device": "Verknüpfung eines Geräts aufheben",
           "bulk_create_from_area": "Stockroom-Objekte für einen Bereich gesammelt erstellen",
           "link_area": "Einen Home-Assistant-Bereich mit einem Stockroom-Raum verknüpfen",
+          "repair": "Verknüpfungen reparieren",
           "settings": "Einstellungen (Abrufintervall)"
         }
       },
@@ -175,6 +176,13 @@
           "area": "Home-Assistant-Bereich",
           "room_id": "Stockroom-Raum"
         }
+      },
+      "repair": {
+        "title": "Verknüpfungen reparieren",
+        "description": "Gleicht Home Assistant mit Stockroom ab. {refresh_count} Verknüpfung(en) werden aktualisiert, {remove_count} verwaiste Verknüpfung(en) (Gerät entfernt) werden gelöscht, und {adopt_count} Stockroom-Verknüpfung(en) zeigen auf Geräte, die Home Assistant nicht verfolgt. Wähle aus, welche davon übernommen werden sollen, und bestätige zum Anwenden.",
+        "data": {
+          "adopt": "Diese Verknüpfungen übernehmen"
+        }
       }
     },
     "error": {
@@ -195,6 +203,7 @@
       "no_unlinked_ha_devices": "In diesem Bereich sind keine nicht verknüpften Geräte verfügbar.",
       "missing_device": "Es wurde kein Gerät ausgewählt.",
       "missing_area": "Es wurde kein Bereich ausgewählt.",
+      "nothing_to_repair": "Alles ist bereits synchron — nichts zu reparieren.",
       "item_not_found": "Dieses Stockroom-Objekt wurde nicht gefunden.",
       "link_conflict": "Dieses Gerät oder Objekt ist bereits verknüpft.",
       "token_read_only": "Dafür wird ein Stockroom-Token mit Schreibberechtigung benötigt, das konfigurierte Token ist jedoch schreibgeschützt.",

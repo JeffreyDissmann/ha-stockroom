@@ -18,7 +18,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import (
     area_registry as ar,
     device_registry as dr,
-    entity_registry as er,
     instance_id,
     selector,
 )
@@ -61,8 +60,11 @@ from .const import (
 from .linking import (
     apply_link,
     build_updated_area_options,
+    build_updated_options,
+    device_friendly_name,
     get_area_room_map,
     get_link_maps,
+    primary_entity_id,
     remove_link,
 )
 
@@ -200,6 +202,10 @@ class StockroomOptionsFlow(OptionsFlow):
         self._browse_room_id: int | None = None
         self._pending_item_id: int | None = None
         self._pending_conflict_name: str | None = None
+        self._repair_refresh: list[tuple[str, int]] = []
+        self._repair_delete: list[tuple[int, str]] = []
+        self._repair_adopt: dict[str, dict[str, Any]] = {}
+        self._repair_drop: list[str] = []
 
     @property
     def _api(self) -> StockroomApiClient:
@@ -218,6 +224,7 @@ class StockroomOptionsFlow(OptionsFlow):
                 "unlink_device",
                 "bulk_create_from_area",
                 "link_area",
+                "repair",
                 "settings",
             ],
         )
@@ -761,6 +768,160 @@ class StockroomOptionsFlow(OptionsFlow):
             ),
         )
 
+    # -- Repair links ----------------------------------------------------
+
+    async def async_step_repair(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Reconcile Stockroom links with Home Assistant, then apply."""
+        if user_input is not None:
+            return await self._async_apply_repair(user_input.get("adopt") or [])
+
+        try:
+            await self._async_scan_repair()
+        except StockroomApiError:
+            return self.async_abort(reason="cannot_connect")
+
+        if not (
+            self._repair_refresh
+            or self._repair_delete
+            or self._repair_adopt
+            or self._repair_drop
+        ):
+            return self.async_abort(reason="nothing_to_repair")
+
+        schema_dict: dict[Any, Any] = {}
+        if self._repair_adopt:
+            options = sorted(
+                (
+                    selector.SelectOptionDict(value=device_id, label=info["label"])
+                    for device_id, info in self._repair_adopt.items()
+                ),
+                key=lambda option: option["label"].lower(),
+            )
+            schema_dict[vol.Optional("adopt", default=list(self._repair_adopt))] = (
+                selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=options,
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.LIST,
+                    )
+                )
+            )
+
+        return self.async_show_form(
+            step_id="repair",
+            data_schema=vol.Schema(schema_dict),
+            description_placeholders={
+                "refresh_count": str(len(self._repair_refresh)),
+                "remove_count": str(len(self._repair_delete) + len(self._repair_drop)),
+                "adopt_count": str(len(self._repair_adopt)),
+            },
+        )
+
+    async def _async_scan_repair(self) -> None:
+        """Fetch all Stockroom links and classify them into a repair plan."""
+        self._repair_refresh = []
+        self._repair_delete = []
+        self._repair_adopt = {}
+        self._repair_drop = []
+
+        links = await self._api.async_get_ha_links()
+        server: dict[str, dict[str, Any]] = {}
+        for element in links:
+            link = element.get("home_assistant_link")
+            if not isinstance(link, dict):
+                continue
+            device_id = link.get("ha_device_id")
+            item_id = element.get("id")
+            if not isinstance(device_id, str) or not device_id:
+                continue  # only device-based links are managed here
+            if not isinstance(item_id, int):
+                continue
+            server[device_id] = {
+                "item_id": item_id,
+                "friendly_name": link.get("friendly_name"),
+                "name": element.get("name"),
+                "location_path": element.get("location_path"),
+            }
+
+        local_device_to_item, _ = get_link_maps(self.config_entry)
+        device_registry = dr.async_get(self.hass)
+
+        for device_id, info in server.items():
+            item_id = info["item_id"]
+            if device_registry.async_get(device_id) is None:
+                self._repair_delete.append((item_id, device_id))
+            elif device_id in local_device_to_item:
+                self._repair_refresh.append((device_id, item_id))
+            else:
+                label = info["friendly_name"] or info["name"] or device_id
+                if info["location_path"]:
+                    label = f"{label} — {info['location_path']}"
+                self._repair_adopt[device_id] = {"item_id": item_id, "label": label}
+
+        # Local links the server doesn't know about (device renamed away / link lost).
+        for device_id, item_id in local_device_to_item.items():
+            if device_id in server:
+                continue
+            if device_registry.async_get(device_id) is None:
+                self._repair_drop.append(device_id)
+            else:
+                self._repair_refresh.append((device_id, item_id))
+
+    async def _async_apply_repair(self, selected_adopt: list[str]) -> ConfigFlowResult:
+        """Apply the repair plan: refresh, adopt selected, delete stale."""
+        new_options: dict[str, Any] = dict(self.config_entry.options)
+        to_apply = list(self._repair_refresh)
+        to_apply.extend(
+            (device_id, self._repair_adopt[device_id]["item_id"])
+            for device_id in selected_adopt
+            if device_id in self._repair_adopt
+        )
+
+        try:
+            for device_id, item_id in to_apply:
+                entity_id = primary_entity_id(self.hass, device_id)
+                if entity_id is None:
+                    continue  # cannot form a valid link without an entity
+                try:
+                    new_options = await apply_link(
+                        self.hass,
+                        self.config_entry,
+                        self._api,
+                        ha_entity_id=entity_id,
+                        ha_device_id=device_id,
+                        item_id=item_id,
+                        friendly_name=self._device_name(device_id),
+                        options=new_options,
+                    )
+                except ValueError:
+                    continue  # 1:1 conflict — skip this one
+
+            for item_id, device_id in self._repair_delete:
+                await self._api.async_delete_item_ha_link(item_id)
+                new_options = self._drop_device(new_options, device_id, item_id)
+        except StockroomPermissionError:
+            return self.async_abort(reason="token_read_only")
+        except StockroomApiError:
+            return self.async_abort(reason="cannot_connect")
+
+        for device_id in self._repair_drop:
+            new_options = self._drop_device(new_options, device_id)
+
+        return self.async_create_entry(title="", data=new_options)
+
+    def _drop_device(
+        self, options: dict[str, Any], device_id: str, item_id: int | None = None
+    ) -> dict[str, Any]:
+        """Remove a device (and its item) from the link maps in ``options``."""
+        device_to_item, item_to_device = get_link_maps(self.config_entry, options)
+        mapped = device_to_item.pop(device_id, None)
+        item_to_device.pop(item_id if item_id is not None else mapped, None)
+        return build_updated_options(
+            self.config_entry, device_to_item, item_to_device, options
+        )
+
     # -- Shared helpers --------------------------------------------------
 
     def _validate_linkable_device(self, device_id: str) -> str | None:
@@ -768,13 +929,13 @@ class StockroomOptionsFlow(OptionsFlow):
         ha_device_to_item, _ = get_link_maps(self.config_entry)
         if device_id in ha_device_to_item:
             return "device_already_linked"
-        if _primary_entity_id(self.hass, device_id) is None:
+        if primary_entity_id(self.hass, device_id) is None:
             return "device_has_no_entity"
         return None
 
     async def _async_try_link(self, device_id: str, item_id: int) -> str | None:
         """Link a device to an item, returning an error key on failure."""
-        entity_id = _primary_entity_id(self.hass, device_id)
+        entity_id = primary_entity_id(self.hass, device_id)
         if entity_id is None:
             return "device_has_no_entity"
         try:
@@ -799,7 +960,7 @@ class StockroomOptionsFlow(OptionsFlow):
         self, device_id: str, payload: dict[str, Any], name: str
     ) -> str | None:
         """Create a Stockroom item and link it, returning an error key on failure."""
-        entity_id = _primary_entity_id(self.hass, device_id)
+        entity_id = primary_entity_id(self.hass, device_id)
         if entity_id is None:
             return "device_has_no_entity"
         try:
@@ -834,7 +995,7 @@ class StockroomOptionsFlow(OptionsFlow):
                 ha_map, _ = get_link_maps(self.config_entry, new_options)
                 if device_id in ha_map:
                     continue
-                entity_id = _primary_entity_id(self.hass, device_id)
+                entity_id = primary_entity_id(self.hass, device_id)
                 if entity_id is None:
                     continue
                 payload: dict[str, Any] = {
@@ -958,15 +1119,12 @@ class StockroomOptionsFlow(OptionsFlow):
             device.id
             for device in dr.async_entries_for_area(device_registry, area_id)
             if device.id not in ha_device_to_item
-            and _primary_entity_id(self.hass, device.id) is not None
+            and primary_entity_id(self.hass, device.id) is not None
         ]
 
     def _device_name(self, device_id: str) -> str:
         """Return a human-friendly name for a device."""
-        device = dr.async_get(self.hass).async_get(device_id)
-        if device is None:
-            return device_id
-        return device.name_by_user or device.name or device_id
+        return device_friendly_name(self.hass, device_id)
 
     def _device_details(self, device_id: str) -> dict[str, str]:
         """Return Stockroom item fields derived from a Home Assistant device."""
@@ -1038,20 +1196,6 @@ def _build_unique_options(
     ]
     options.sort(key=lambda option: option["label"].lower())
     return options
-
-
-def _primary_entity_id(hass: HomeAssistant, device_id: str) -> str | None:
-    """Return a representative entity id for a device, preferring a primary one."""
-    registry = er.async_get(hass)
-    entries = er.async_entries_for_device(
-        registry, device_id, include_disabled_entities=True
-    )
-    if not entries:
-        return None
-    for entry in entries:
-        if not entry.disabled and entry.entity_category is None:
-            return entry.entity_id
-    return entries[0].entity_id
 
 
 class CannotConnect(HomeAssistantError):

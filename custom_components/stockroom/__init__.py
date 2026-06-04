@@ -23,7 +23,11 @@ from .const import (
     CONF_LINKS,
 )
 from .coordinator import StockroomConfigEntry, StockroomDataUpdateCoordinator
-from .linking import async_cleanup_removed_ha_device_link
+from .linking import (
+    async_cleanup_removed_ha_device_link,
+    async_refresh_link,
+    get_link_maps,
+)
 from .services import async_setup_services, async_unload_services
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -56,8 +60,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
     def _async_handle_device_registry_updated(
         event: Event[dr.EventDeviceRegistryUpdatedData],
     ) -> None:
-        """Clean up the Stockroom link when a linked HA device is removed."""
-        if event.data["action"] != "remove":
+        """React to a linked HA device being renamed or removed."""
+        action = event.data["action"]
+        device_id = event.data["device_id"]
+
+        if action == "update":
+            changes = event.data.get("changes", {})
+            if "name_by_user" not in changes and "name" not in changes:
+                return
+            ha_device_to_item, _ = get_link_maps(entry)
+            if device_id not in ha_device_to_item:
+                return
+
+            async def _async_sync_friendly_name() -> None:
+                try:
+                    await async_refresh_link(hass, entry, api, device_id)
+                except (
+                    StockroomApiError,
+                    StockroomAuthenticationError,
+                    StockroomConnectionError,
+                    StockroomPermissionError,
+                ):
+                    _LOGGER.warning(
+                        "Unable to update Stockroom link name after device rename"
+                    )
+
+            hass.async_create_task(_async_sync_friendly_name())
+            return
+
+        if action != "remove":
             return
 
         async def _async_cleanup_removed_device() -> None:

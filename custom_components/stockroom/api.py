@@ -260,6 +260,41 @@ class StockroomApiClient:
             page += 1
         return collected
 
+    async def async_get_ha_links(
+        self, *, instance_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Return all items that have a Home Assistant link.
+
+        Calls ``GET /home-assistant-links``; each element is a full item with an
+        embedded ``home_assistant_link`` object. ``instance_id`` filters to a
+        single Home Assistant instance server-side.
+        """
+        page = 1
+        per_page = 100
+        collected: list[dict[str, Any]] = []
+        while True:
+            params: dict[str, Any] = {"page": page, "per_page": per_page}
+            if instance_id is not None:
+                params["instance_id"] = instance_id
+            data = await self._async_request(
+                "GET",
+                "home-assistant-links",
+                error_context="Home Assistant links request",
+                params=params,
+            )
+            if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+                raise StockroomApiError(
+                    "Stockroom home-assistant-links response is invalid"
+                )
+            items = [item for item in data["data"] if isinstance(item, dict)]
+            collected.extend(items)
+            meta = data.get("meta")
+            last_page = meta.get("last_page") if isinstance(meta, dict) else None
+            if not items or not isinstance(last_page, int) or page >= last_page:
+                break
+            page += 1
+        return collected
+
     async def async_get_item(self, item_id: int) -> dict[str, Any]:
         """Return a full item (``GET /items/{id}``)."""
         data = await self._async_request(
