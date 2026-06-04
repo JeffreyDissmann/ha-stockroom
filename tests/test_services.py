@@ -28,11 +28,14 @@ from .const import (
     SEARCH_PAYLOAD,
     STATISTICS_PAYLOAD,
     URL_HA_LINK,
+    URL_HA_LINKS,
     URL_ITEM,
     URL_ITEMS,
     URL_SEARCH,
     URL_STATISTICS,
 )
+
+_EMPTY_HA_LINKS = {"data": [], "meta": {"current_page": 1, "last_page": 1}}
 
 
 def _make_linked_device(hass: HomeAssistant) -> tuple[str, str]:
@@ -140,6 +143,7 @@ async def test_unlink_item_service(hass: HomeAssistant) -> None:
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
         mocked.get(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.delete(URL_HA_LINK, status=204, repeat=True)
         entry = await _setup_entry(hass, options=options)
 

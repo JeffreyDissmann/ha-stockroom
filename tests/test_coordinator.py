@@ -78,6 +78,24 @@ async def test_setup_invalid_token_starts_reauth(hass: HomeAssistant) -> None:
     assert any(flow["context"]["source"] == "reauth" for flow in flows)
 
 
+async def test_setup_forbidden_token_starts_reauth(hass: HomeAssistant) -> None:
+    """A 403 (token lacks the read ability) also starts a re-auth flow."""
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, unique_id=MOCK_HOST)
+    entry.add_to_hass(hass)
+    with aioresponses() as mocked:
+        mocked.get(
+            URL_STATISTICS,
+            status=403,
+            payload={"message": "This action is unauthorized."},
+            repeat=True,
+        )
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    flows = hass.config_entries.flow.async_progress()
+    assert any(flow["context"]["source"] == "reauth" for flow in flows)
+
+
 async def test_unload_entry(hass: HomeAssistant) -> None:
     """Unloading the entry tears it down cleanly."""
     with aioresponses() as mocked:

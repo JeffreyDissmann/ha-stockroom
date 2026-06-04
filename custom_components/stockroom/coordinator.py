@@ -16,7 +16,6 @@ from .api import (
     StockroomApiError,
     StockroomAuthenticationError,
     StockroomConnectionError,
-    StockroomNotFoundError,
     StockroomPermissionError,
     StockroomRateLimitError,
 )
@@ -24,6 +23,8 @@ from .const import (
     CONF_SCAN_INTERVAL_MINUTES,
     DEFAULT_SCAN_INTERVAL_MINUTES,
     DOMAIN,
+    MAX_SCAN_INTERVAL_MINUTES,
+    MIN_SCAN_INTERVAL_MINUTES,
 )
 from .linking import get_link_maps
 from .models import LinkedItem, StockroomStatistics
@@ -51,8 +52,16 @@ class StockroomDataUpdateCoordinator(DataUpdateCoordinator[StockroomData]):
         entry: StockroomConfigEntry,
     ) -> None:
         """Initialize the Stockroom coordinator."""
-        minutes = entry.options.get(
-            CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES
+        try:
+            minutes = int(
+                entry.options.get(
+                    CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES
+                )
+            )
+        except (TypeError, ValueError):
+            minutes = DEFAULT_SCAN_INTERVAL_MINUTES
+        minutes = max(
+            MIN_SCAN_INTERVAL_MINUTES, min(MAX_SCAN_INTERVAL_MINUTES, minutes)
         )
         super().__init__(
             hass,
@@ -71,7 +80,9 @@ class StockroomDataUpdateCoordinator(DataUpdateCoordinator[StockroomData]):
         except StockroomAuthenticationError as err:
             raise ConfigEntryAuthFailed("Stockroom token is invalid") from err
         except StockroomPermissionError as err:
-            raise UpdateFailed(f"Stockroom token lacks an ability: {err}") from err
+            raise ConfigEntryAuthFailed(
+                f"Stockroom token lacks a required ability: {err}"
+            ) from err
         except StockroomRateLimitError as err:
             raise UpdateFailed("Stockroom rate limit exceeded") from err
         except StockroomConnectionError as err:
@@ -81,24 +92,32 @@ class StockroomDataUpdateCoordinator(DataUpdateCoordinator[StockroomData]):
         return StockroomData(statistics=statistics, linked_items=linked_items)
 
     async def _async_fetch_linked_items(self) -> dict[str, LinkedItem]:
-        """Resolve the configured links to their current Stockroom item state."""
+        """Resolve the configured links to their current Stockroom item state.
+
+        Uses a single ``GET /home-assistant-links`` call (rather than one
+        ``GET /items/{id}`` per device) to avoid N round-trips and rate limits.
+        """
         ha_device_to_item, _ = get_link_maps(self.config_entry)
+        if not ha_device_to_item:
+            return {}
+
+        by_device: dict[str, dict] = {}
+        for element in await self.api.async_get_ha_links():
+            link = element.get("home_assistant_link")
+            if isinstance(link, dict) and isinstance(link.get("ha_device_id"), str):
+                by_device[link["ha_device_id"]] = element
+
         linked_items: dict[str, LinkedItem] = {}
         for ha_device_id, item_id in ha_device_to_item.items():
-            try:
-                item = await self.api.async_get_item(item_id)
-            except StockroomNotFoundError:
-                _LOGGER.debug(
-                    "Linked Stockroom item %s no longer exists; skipping", item_id
-                )
+            element = by_device.get(ha_device_id)
+            if element is None:
                 continue
+            quantity = element.get("quantity")
             linked_items[ha_device_id] = LinkedItem(
                 item_id=item_id,
-                name=str(item.get("name") or f"Item {item_id}"),
-                location_path=str(item.get("location_path") or ""),
-                quantity=item.get("quantity")
-                if isinstance(item.get("quantity"), int)
-                else 1,
+                name=str(element.get("name") or f"Item {item_id}"),
+                location_path=str(element.get("location_path") or ""),
+                quantity=quantity if isinstance(quantity, int) else 1,
                 url=self.api.get_item_url(item_id),
             )
         return linked_items

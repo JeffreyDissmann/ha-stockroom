@@ -10,17 +10,12 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import (
-    StockroomApiClient,
-    StockroomApiError,
-    StockroomAuthenticationError,
-    StockroomConnectionError,
-    StockroomPermissionError,
-)
+from .api import StockroomApiClient, StockroomApiError
 from .const import (
     CONF_HA_DEVICE_TO_ITEM,
     CONF_ITEM_TO_HA_DEVICE,
     CONF_LINKS,
+    DOMAIN,
 )
 from .coordinator import StockroomConfigEntry, StockroomDataUpdateCoordinator
 from .linking import (
@@ -73,14 +68,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
                 return
 
             async def _async_sync_friendly_name() -> None:
+                current = hass.config_entries.async_get_entry(entry.entry_id)
+                if current is None or current.state is not ConfigEntryState.LOADED:
+                    return
                 try:
                     await async_refresh_link(hass, entry, api, device_id)
-                except (
-                    StockroomApiError,
-                    StockroomAuthenticationError,
-                    StockroomConnectionError,
-                    StockroomPermissionError,
-                ):
+                except StockroomApiError:
                     _LOGGER.warning(
                         "Unable to update Stockroom link name after device rename"
                     )
@@ -100,14 +93,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
                 return
             try:
                 new_options = await async_cleanup_removed_ha_device_link(
-                    hass, entry, api, event.data["device_id"]
+                    hass, entry, api, device_id
                 )
-            except (
-                StockroomApiError,
-                StockroomAuthenticationError,
-                StockroomConnectionError,
-                StockroomPermissionError,
-            ):
+            except StockroomApiError:
                 _LOGGER.warning(
                     "Unable to clean up Stockroom link after HA device removal"
                 )
@@ -139,7 +127,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
 async def async_unload_entry(hass: HomeAssistant, entry: StockroomConfigEntry) -> bool:
     """Unload a config entry."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unloaded:
+    if unloaded and not any(
+        other.entry_id != entry.entry_id and other.state is ConfigEntryState.LOADED
+        for other in hass.config_entries.async_entries(DOMAIN)
+    ):
+        # Services are domain-global; only remove them with no other entry loaded.
         async_unload_services(hass)
     return unloaded
 

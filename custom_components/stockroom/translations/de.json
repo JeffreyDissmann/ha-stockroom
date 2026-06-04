@@ -207,6 +207,7 @@
       "item_not_found": "Dieses Stockroom-Objekt wurde nicht gefunden.",
       "link_conflict": "Dieses Gerät oder Objekt ist bereits verknüpft.",
       "token_read_only": "Dafür wird ein Stockroom-Token mit Schreibberechtigung benötigt, das konfigurierte Token ist jedoch schreibgeschützt.",
+      "create_failed": "Einige Objekte konnten nicht erstellt werden. Vor dem Fehler erstellte Objekte wurden beibehalten; prüfe Stockroom und versuche es erneut.",
       "link_not_replaced": "Die vorhandene Verknüpfung wurde beibehalten; es wurden keine Änderungen vorgenommen.",
       "cannot_connect": "Verbindung zu Stockroom fehlgeschlagen."
     }

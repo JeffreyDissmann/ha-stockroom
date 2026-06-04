@@ -98,7 +98,10 @@ async def async_setup_entry(
     device_registry = dr.async_get(hass)
     ha_device_to_item, _ = get_link_maps(entry)
     for ha_device_id, item_id in ha_device_to_item.items():
-        if linked_device := device_registry.async_get(ha_device_id):
+        linked_device = device_registry.async_get(ha_device_id)
+        # The sensor attaches to the linked device via its identifiers/connections;
+        # skip devices that have neither, which HA would reject.
+        if linked_device and (linked_device.identifiers or linked_device.connections):
             entities.append(
                 StockroomLinkedItemSensor(
                     coordinator,

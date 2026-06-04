@@ -16,14 +16,31 @@ from custom_components.stockroom.const import (
 from custom_components.stockroom.linking import get_link_maps
 
 from .const import (
-    ITEM_42_PAYLOAD,
     MOCK_CONFIG,
     MOCK_HOST,
     STATISTICS_PAYLOAD,
     URL_HA_LINK,
-    URL_ITEM,
+    URL_HA_LINKS,
     URL_STATISTICS,
 )
+
+
+def _ha_links(device_id: str) -> dict:
+    return {
+        "data": [
+            {
+                "id": 42,
+                "name": "Cordless Drill",
+                "location_path": "Garage / Tool Cabinet",
+                "quantity": 1,
+                "home_assistant_link": {
+                    "ha_device_id": device_id,
+                    "friendly_name": "Cordless Drill",
+                },
+            }
+        ],
+        "meta": {"current_page": 1, "per_page": 100, "total": 1, "last_page": 1},
+    }
 
 
 def _make_device(hass: HomeAssistant) -> str:
@@ -61,7 +78,7 @@ async def test_linked_item_sensor_exposes_attributes(hass: HomeAssistant) -> Non
     entry.add_to_hass(hass)
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
-        mocked.get(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_ha_links(device_id), repeat=True)
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
@@ -88,7 +105,7 @@ async def test_device_removal_cleans_up_link(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
-        mocked.get(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_ha_links(device_id), repeat=True)
         mocked.delete(URL_HA_LINK, status=204, repeat=True)
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()

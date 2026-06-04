@@ -32,12 +32,15 @@ from .const import (
     SEARCH_PAYLOAD,
     STATISTICS_PAYLOAD,
     URL_HA_LINK,
+    URL_HA_LINKS,
     URL_ITEM,
     URL_ITEMS,
     URL_ROOMS,
     URL_SEARCH,
     URL_STATISTICS,
 )
+
+_EMPTY_HA_LINKS = {"data": [], "meta": {"current_page": 1, "last_page": 1}}
 
 UNLINKED_ITEMS = {
     "data": [
@@ -78,6 +81,7 @@ async def _setup(
 ) -> MockConfigEntry:
     mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
     mocked.get(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
+    mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
     entry = MockConfigEntry(
         domain=DOMAIN, data=MOCK_CONFIG, unique_id=MOCK_HOST, options=options or {}
     )

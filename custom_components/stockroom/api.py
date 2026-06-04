@@ -169,7 +169,12 @@ class StockroomApiClient:
                     )
                 if response.status == HTTPStatus.NO_CONTENT:
                     return None
-                return await response.json()
+                try:
+                    return await response.json()
+                except ValueError as err:
+                    raise StockroomApiError(
+                        f"Stockroom {error_context} returned invalid JSON"
+                    ) from err
         except ClientError as err:
             raise StockroomConnectionError from err
 

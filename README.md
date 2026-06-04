@@ -23,7 +23,7 @@ A custom Home Assistant integration for [Stockroom](https://github.com/JeffreyDi
 
 ## Requirements
 
-- Home Assistant **2024.1.0** or newer (the bundled logo requires **2026.3.0+**)
+- Home Assistant **2024.12.0** or newer (the bundled logo requires **2026.3.0+**)
 - A reachable Stockroom instance
 - A Stockroom **API token**:
   - **read** ability for the statistics sensors

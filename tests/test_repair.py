@@ -70,6 +70,9 @@ async def test_friendly_name_sync_on_rename(hass: HomeAssistant) -> None:
     """Renaming a linked device pushes the new friendly name to Stockroom."""
     device_id = _make_device(hass, "dev-1", "Old Name")
     with aioresponses() as mocked:
+        mocked.get(
+            URL_HA_LINKS, payload={"data": [], "meta": {"last_page": 1}}, repeat=True
+        )
         mocked.put(URL_HA_LINK, status=200, payload=LINK_RESPONSE, repeat=True)
         await _setup(hass, mocked, options=_links(device_id, 42))
 

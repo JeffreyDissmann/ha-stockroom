@@ -237,7 +237,12 @@ class StockroomOptionsFlow(OptionsFlow):
         """Manage the poll interval option."""
         if user_input is not None:
             return self.async_create_entry(
-                data={**self.config_entry.options, **user_input}
+                data={
+                    **self.config_entry.options,
+                    CONF_SCAN_INTERVAL_MINUTES: int(
+                        user_input[CONF_SCAN_INTERVAL_MINUTES]
+                    ),
+                }
             )
 
         current = self.config_entry.options.get(
@@ -683,7 +688,6 @@ class StockroomOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Create and link an item for each selected device."""
-        errors: dict[str, str] = {}
         if user_input is not None:
             error = await self._async_bulk_create(
                 self._bulk_device_ids, user_input[ATTR_TYPE]
@@ -693,7 +697,13 @@ class StockroomOptionsFlow(OptionsFlow):
                     title="",
                     data=self._pending_options or dict(self.config_entry.options),
                 )
-            errors["base"] = error
+            # Persist any items created before the failure so they aren't
+            # orphaned (or re-created on retry), then report the error.
+            if self._pending_options is not None:
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, options=self._pending_options
+                )
+            return self.async_abort(reason=error)
 
         return self.async_show_form(
             step_id="bulk_create_details",
@@ -713,7 +723,6 @@ class StockroomOptionsFlow(OptionsFlow):
                     )
                 }
             ),
-            errors=errors,
             description_placeholders={"count": str(len(self._bulk_device_ids))},
         )
 
@@ -917,7 +926,11 @@ class StockroomOptionsFlow(OptionsFlow):
         """Remove a device (and its item) from the link maps in ``options``."""
         device_to_item, item_to_device = get_link_maps(self.config_entry, options)
         mapped = device_to_item.pop(device_id, None)
-        item_to_device.pop(item_id if item_id is not None else mapped, None)
+        target = item_id if item_id is not None else mapped
+        # Only drop the reverse entry if it still points back at this device, so
+        # a concurrently re-adopted item isn't clobbered.
+        if target is not None and item_to_device.get(target) == device_id:
+            item_to_device.pop(target, None)
         return build_updated_options(
             self.config_entry, device_to_item, item_to_device, options
         )
@@ -1019,11 +1032,13 @@ class StockroomOptionsFlow(OptionsFlow):
                     friendly_name=self._device_name(device_id),
                     options=new_options,
                 )
+                # Capture progress after each success so a mid-loop failure
+                # doesn't orphan items already created and linked in Stockroom.
+                self._pending_options = new_options
         except StockroomPermissionError:
             return "token_read_only"
         except StockroomApiError:
             return "create_failed"
-        self._pending_options = new_options
         return None
 
     def _result_options(
