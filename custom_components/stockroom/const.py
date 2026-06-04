@@ -34,6 +34,10 @@ ATTR_NAME = "name"
 ATTR_TYPE = "type"
 ATTR_PARENT_ID = "parent_id"
 ATTR_QUERY = "query"
+ATTR_MANUFACTURER = "manufacturer"
+ATTR_MODEL_NUMBER = "model_number"
+ATTR_SERIAL_NUMBER = "serial_number"
+ATTR_DESCRIPTION = "description"
 
 # Options-flow (GUI linking wizard) fields.
 CONF_DEVICE_ID = "device_id"

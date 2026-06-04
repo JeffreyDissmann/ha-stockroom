@@ -35,10 +35,14 @@ from .api import (
     normalize_stockroom_host,
 )
 from .const import (
+    ATTR_DESCRIPTION,
     ATTR_ITEM_ID,
+    ATTR_MANUFACTURER,
+    ATTR_MODEL_NUMBER,
     ATTR_NAME,
     ATTR_PARENT_ID,
     ATTR_QUERY,
+    ATTR_SERIAL_NUMBER,
     ATTR_TYPE,
     CONF_AREA,
     CONF_DEVICE_ID,
@@ -475,6 +479,15 @@ class StockroomOptionsFlow(OptionsFlow):
                 "name": user_input[ATTR_NAME],
                 "type": user_input[ATTR_TYPE],
             }
+            for field in (
+                ATTR_MANUFACTURER,
+                ATTR_MODEL_NUMBER,
+                ATTR_SERIAL_NUMBER,
+                ATTR_DESCRIPTION,
+            ):
+                value = (user_input.get(field) or "").strip()
+                if value:
+                    payload[field] = value
             if user_input.get(ATTR_PARENT_ID):
                 payload["parent_id"] = int(user_input[ATTR_PARENT_ID])
             error = await self._async_create_and_link(
@@ -492,6 +505,7 @@ class StockroomOptionsFlow(OptionsFlow):
         except StockroomApiError:
             parent_options = []
 
+        details = self._device_details(device_id)
         schema_dict: dict[Any, Any] = {
             vol.Required(ATTR_NAME, default=self._device_name(device_id)): str,
             vol.Required(ATTR_TYPE, default=DEFAULT_ITEM_TYPE): selector.SelectSelector(
@@ -503,6 +517,18 @@ class StockroomOptionsFlow(OptionsFlow):
                     translation_key="item_type",
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
+            ),
+            vol.Optional(
+                ATTR_MANUFACTURER, default=details.get(ATTR_MANUFACTURER, "")
+            ): str,
+            vol.Optional(
+                ATTR_MODEL_NUMBER, default=details.get(ATTR_MODEL_NUMBER, "")
+            ): str,
+            vol.Optional(
+                ATTR_SERIAL_NUMBER, default=details.get(ATTR_SERIAL_NUMBER, "")
+            ): str,
+            vol.Optional(ATTR_DESCRIPTION, default=""): selector.TextSelector(
+                selector.TextSelectorConfig(multiline=True)
             ),
         }
         if parent_options:
@@ -746,7 +772,11 @@ class StockroomOptionsFlow(OptionsFlow):
                 if entity_id is None:
                     continue
                 created = await self._api.async_create_item(
-                    {"name": self._device_name(device_id), "type": item_type}
+                    {
+                        "name": self._device_name(device_id),
+                        "type": item_type,
+                        **self._device_details(device_id),
+                    }
                 )
                 item_id = created.get("id")
                 if not isinstance(item_id, int):
@@ -870,6 +900,20 @@ class StockroomOptionsFlow(OptionsFlow):
         if device is None:
             return device_id
         return device.name_by_user or device.name or device_id
+
+    def _device_details(self, device_id: str) -> dict[str, str]:
+        """Return Stockroom item fields derived from a Home Assistant device."""
+        device = dr.async_get(self.hass).async_get(device_id)
+        if device is None:
+            return {}
+        details: dict[str, str] = {}
+        if device.manufacturer:
+            details[ATTR_MANUFACTURER] = device.manufacturer
+        if model := (device.model or getattr(device, "model_id", None)):
+            details[ATTR_MODEL_NUMBER] = model
+        if serial := getattr(device, "serial_number", None):
+            details[ATTR_SERIAL_NUMBER] = serial
+        return details
 
 
 def _node_label(node: dict[str, Any], *, path_key: str) -> str:

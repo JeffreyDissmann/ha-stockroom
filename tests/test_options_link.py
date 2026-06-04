@@ -53,13 +53,14 @@ UNLINKED_ITEMS = {
 }
 
 
-def _make_device(hass: HomeAssistant) -> str:
+def _make_device(hass: HomeAssistant, **extra) -> str:
     source_entry = MockConfigEntry(domain="demo", data={})
     source_entry.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(
         config_entry_id=source_entry.entry_id,
         identifiers={("demo", "dev-1")},
         name="Test Device",
+        **extra,
     )
     er.async_get(hass).async_get_or_create(
         "sensor", "demo", "unique-1", device_id=device.id, config_entry=source_entry
@@ -370,6 +371,47 @@ async def test_create_and_link_via_wizard(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     ha_device_to_item, _ = get_link_maps(entry)
     assert ha_device_to_item == {device_id: 77}
+
+
+async def test_create_and_link_prefills_device_details(hass: HomeAssistant) -> None:
+    """Create-item pre-fills manufacturer/model/serial from the HA device."""
+    device_id = _make_device(
+        hass, manufacturer="Acme", model="X-1000", serial_number="SN-42"
+    )
+    created = {"data": {"id": 88, "name": "Acme Device", "type": {"value": "item"}}}
+    with aioresponses() as mocked:
+        mocked.get(
+            URL_ITEMS, payload={"data": [], "meta": {"last_page": 1}}, repeat=True
+        )
+        mocked.post(URL_ITEMS, status=201, payload=created, repeat=True)
+        mocked.put(URL_HA_LINK, status=201, payload=LINK_RESPONSE, repeat=True)
+        entry = await _setup(hass, mocked)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "create_and_link"}
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"device_id": device_id}
+        )
+        # Submit without overriding the pre-filled detail fields.
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"name": "Acme Device", "type": "item"}
+        )
+        await hass.async_block_till_done()
+
+        post_request = next(
+            req
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "POST"
+        )
+        body = post_request.kwargs["json"]
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert body["manufacturer"] == "Acme"
+    assert body["model_number"] == "X-1000"
+    assert body["serial_number"] == "SN-42"
 
 
 async def test_unlink_via_wizard(hass: HomeAssistant) -> None:
