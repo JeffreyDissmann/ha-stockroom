@@ -1,0 +1,315 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Mit Stockroom verbinden",
+        "description": "Gib die Adresse deiner Stockroom-Instanz und ein API-Token ein. Das Token wird mit deinem Stockroom-Konto überprüft.",
+        "data": {
+          "host": "Host",
+          "token": "API-Token",
+          "name": "Name"
+        },
+        "data_description": {
+          "host": "Die Basisadresse deiner Stockroom-Instanz, inklusive Host und Port.",
+          "token": "Ein Stockroom-API-Token mit mindestens der Leseberechtigung (zum Verknüpfen wird Schreibzugriff benötigt).",
+          "name": "In Home Assistant angezeigter Name (Standard: Stockroom)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut bei Stockroom anmelden",
+        "description": "Das API-Token für {host} ist nicht mehr gültig. Gib ein neues Token ein.",
+        "data": {
+          "token": "API-Token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung fehlgeschlagen",
+      "invalid_auth": "Ungültige Authentifizierung",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "abort": {
+      "already_configured": "Diese Stockroom-Instanz ist bereits konfiguriert.",
+      "reauth_successful": "Die erneute Authentifizierung war erfolgreich"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Stockroom",
+        "description": "Verknüpfe Home-Assistant-Geräte mit Stockroom-Objekten oder ändere Einstellungen.",
+        "menu_options": {
+          "link_device": "Ein Gerät mit einem vorhandenen Stockroom-Objekt verknüpfen",
+          "create_and_link": "Aus einem Gerät ein Stockroom-Objekt erstellen und verknüpfen",
+          "unlink_device": "Verknüpfung eines Geräts aufheben",
+          "bulk_create_from_area": "Stockroom-Objekte für einen Bereich gesammelt erstellen",
+          "settings": "Einstellungen (Abrufintervall)"
+        }
+      },
+      "settings": {
+        "title": "Einstellungen",
+        "data": {
+          "scan_interval_minutes": "Abrufintervall"
+        },
+        "data_description": {
+          "scan_interval_minutes": "Wie oft (in Minuten) Stockroom nach Statistiken und Aktualisierungen verknüpfter Objekte abgefragt wird."
+        }
+      },
+      "link_device": {
+        "title": "Gerät auswählen",
+        "description": "Wähle das Home-Assistant-Gerät, das mit einem Stockroom-Objekt verknüpft werden soll.",
+        "data": {
+          "device_id": "Gerät"
+        }
+      },
+      "link_method": {
+        "title": "Stockroom-Objekt finden",
+        "description": "Wähle, wie das mit {device_name} zu verknüpfende Stockroom-Objekt gefunden werden soll.",
+        "menu_options": {
+          "link_search": "Nach Namen suchen",
+          "link_browse": "Nach Raum durchsuchen",
+          "link_enter_id": "Objekt-ID eingeben"
+        }
+      },
+      "link_search": {
+        "title": "Stockroom durchsuchen",
+        "description": "Suche nach dem Objekt, das mit {device_name} verknüpft werden soll.",
+        "data": {
+          "query": "Suche"
+        }
+      },
+      "link_search_results": {
+        "title": "Treffer auswählen",
+        "description": "Wähle das Stockroom-Objekt, das mit {device_name} verknüpft werden soll.",
+        "data": {
+          "item_id": "Stockroom-Objekt"
+        }
+      },
+      "link_browse": {
+        "title": "Raum auswählen",
+        "description": "Wähle den Raum, der nach einem nicht verknüpften Objekt durchsucht werden soll.",
+        "data": {
+          "room_id": "Raum"
+        }
+      },
+      "link_browse_items": {
+        "title": "Objekt auswählen",
+        "description": "Wähle ein nicht verknüpftes Stockroom-Objekt aus diesem Raum.",
+        "data": {
+          "item_id": "Stockroom-Objekt"
+        }
+      },
+      "link_enter_id": {
+        "title": "Objekt-ID eingeben",
+        "description": "Gib die Stockroom-Objekt-ID ein, die mit {device_name} verknüpft werden soll.",
+        "data": {
+          "item_id": "Stockroom-Objekt-ID"
+        }
+      },
+      "link_confirm": {
+        "title": "Objekt bereits anderweitig verknüpft",
+        "description": "Stockroom-Objekt #{item_id} ist bereits mit einer anderen Home-Assistant-Instanz verknüpft ({friendly_name}). Diese Verknüpfung durch {device_name} ersetzen?",
+        "data": {
+          "replace": "Vorhandene Verknüpfung ersetzen"
+        }
+      },
+      "create_and_link": {
+        "title": "Gerät auswählen",
+        "description": "Wähle das Home-Assistant-Gerät, für das ein neues Stockroom-Objekt erstellt werden soll.",
+        "data": {
+          "device_id": "Gerät"
+        }
+      },
+      "create_item_details": {
+        "title": "Neues Stockroom-Objekt",
+        "description": "Erstelle und verknüpfe ein Stockroom-Objekt für {device_name}. Details werden, sofern verfügbar, aus Home Assistant vorausgefüllt.",
+        "data": {
+          "name": "Name",
+          "type": "Typ",
+          "manufacturer": "Hersteller",
+          "model_number": "Modellnummer",
+          "serial_number": "Seriennummer",
+          "description": "Beschreibung",
+          "parent_id": "Übergeordnet (Raum oder Behälter)"
+        },
+        "data_description": {
+          "manufacturer": "Aus dem Hersteller des Geräts vorausgefüllt.",
+          "model_number": "Aus dem Modell des Geräts vorausgefüllt.",
+          "serial_number": "Aus der Seriennummer des Geräts vorausgefüllt, sofern Home Assistant sie kennt."
+        }
+      },
+      "unlink_device": {
+        "title": "Geräteverknüpfung aufheben",
+        "description": "Wähle das verknüpfte Gerät, dessen Verknüpfung zum Stockroom-Objekt aufgehoben werden soll.",
+        "data": {
+          "device_id": "Verknüpftes Gerät"
+        }
+      },
+      "bulk_create_from_area": {
+        "title": "Bereich auswählen",
+        "description": "Wähle einen Home-Assistant-Bereich, um Stockroom-Objekte für dessen Geräte zu erstellen.",
+        "data": {
+          "area": "Bereich"
+        }
+      },
+      "bulk_select_devices": {
+        "title": "Geräte auswählen",
+        "description": "Wähle die nicht verknüpften Geräte in {area_name}, für die Stockroom-Objekte erstellt werden sollen.",
+        "data": {
+          "device_ids": "Geräte"
+        }
+      },
+      "bulk_create_details": {
+        "title": "Objekte erstellen",
+        "description": "Für jedes der {count} ausgewählten Geräte wird ein Stockroom-Objekt erstellt und verknüpft.",
+        "data": {
+          "type": "Typ"
+        }
+      }
+    },
+    "error": {
+      "device_already_linked": "Dieses Gerät ist bereits mit einem Stockroom-Objekt verknüpft.",
+      "device_has_no_entity": "Dieses Gerät hat keine Entitäten und kann daher nicht verknüpft werden.",
+      "link_conflict": "Verknüpfung nicht möglich: Das Gerät oder Objekt ist bereits verknüpft.",
+      "token_read_only": "Dafür wird ein Stockroom-Token mit Schreibberechtigung benötigt, das konfigurierte Token ist jedoch schreibgeschützt.",
+      "cannot_connect": "Verbindung zu Stockroom fehlgeschlagen.",
+      "create_failed": "Das Stockroom-Objekt konnte nicht erstellt werden. Prüfe die Angaben und versuche es erneut.",
+      "no_devices_selected": "Wähle mindestens ein Gerät aus, um fortzufahren.",
+      "no_results": "Keine passenden Stockroom-Objekte gefunden. Versuche eine andere Suche.",
+      "not_linked": "Dieses Gerät ist nicht mehr verknüpft."
+    },
+    "abort": {
+      "no_links": "Es sind noch keine Geräte verknüpft.",
+      "no_rooms": "Es sind keine Stockroom-Räume verfügbar.",
+      "no_unlinked_items": "Es sind keine nicht verknüpften Stockroom-Objekte verfügbar.",
+      "no_unlinked_ha_devices": "In diesem Bereich sind keine nicht verknüpften Geräte verfügbar.",
+      "missing_device": "Es wurde kein Gerät ausgewählt.",
+      "missing_area": "Es wurde kein Bereich ausgewählt.",
+      "item_not_found": "Dieses Stockroom-Objekt wurde nicht gefunden.",
+      "link_conflict": "Dieses Gerät oder Objekt ist bereits verknüpft.",
+      "token_read_only": "Dafür wird ein Stockroom-Token mit Schreibberechtigung benötigt, das konfigurierte Token ist jedoch schreibgeschützt.",
+      "link_not_replaced": "Die vorhandene Verknüpfung wurde beibehalten; es wurden keine Änderungen vorgenommen.",
+      "cannot_connect": "Verbindung zu Stockroom fehlgeschlagen."
+    }
+  },
+  "selector": {
+    "item_type": {
+      "options": {
+        "room": "Raum",
+        "container": "Behälter",
+        "item": "Gegenstand"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_items": {
+        "name": "Objekte gesamt"
+      },
+      "total_value": {
+        "name": "Gesamtwert"
+      },
+      "rooms": {
+        "name": "Räume"
+      },
+      "containers": {
+        "name": "Behälter"
+      },
+      "items": {
+        "name": "Gegenstände"
+      },
+      "linked_item": {
+        "name": "Stockroom-Objekt"
+      }
+    }
+  },
+  "services": {
+    "link_item": {
+      "name": "Objekt verknüpfen",
+      "description": "Verknüpft ein Home-Assistant-Gerät mit einem vorhandenen Stockroom-Objekt und schreibt einen Deeplink zurück nach Stockroom.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Eine beliebige Entität, deren Gerät verknüpft werden soll. Das Gerät wird aus dieser Entität ermittelt."
+        },
+        "item_id": {
+          "name": "Stockroom-Objekt-ID",
+          "description": "Numerische ID des zu verknüpfenden Stockroom-Objekts."
+        },
+        "friendly_name": {
+          "name": "Anzeigename",
+          "description": "Optionaler Name, der an der Stockroom-Verknüpfung gespeichert wird. Standard ist der Gerätename."
+        }
+      }
+    },
+    "unlink_item": {
+      "name": "Verknüpfung aufheben",
+      "description": "Entfernt die Verknüpfung zwischen einem Home-Assistant-Gerät und seinem Stockroom-Objekt.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Eine beliebige Entität, deren Gerät aktuell verknüpft ist."
+        }
+      }
+    },
+    "create_and_link_item": {
+      "name": "Objekt erstellen und verknüpfen",
+      "description": "Erstellt ein neues Stockroom-Objekt für ein nicht zugeordnetes Home-Assistant-Gerät und verknüpft es.",
+      "fields": {
+        "entity_id": {
+          "name": "Entität",
+          "description": "Eine beliebige Entität, deren Gerät ein neues Stockroom-Objekt erhalten soll."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Name für das neue Stockroom-Objekt. Standard ist der Gerätename."
+        },
+        "type": {
+          "name": "Typ",
+          "description": "Zu erstellender Stockroom-Objekttyp."
+        },
+        "parent_id": {
+          "name": "Übergeordnete ID",
+          "description": "Optionale ID des übergeordneten Stockroom-Objekts (Raum oder Behälter)."
+        }
+      }
+    },
+    "search": {
+      "name": "Suchen",
+      "description": "Durchsucht Stockroom nach Objekten und gibt die besten Treffer mit ihrem Standortpfad zurück.",
+      "fields": {
+        "query": {
+          "name": "Suchbegriff",
+          "description": "Zu suchender Text (zum Beispiel „Wo ist die Bohrmaschine?“)."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "integration_not_loaded": {
+      "message": "Die Stockroom-Integration ist nicht geladen."
+    },
+    "entity_not_found": {
+      "message": "Entität {entity_id} wurde in der Entitäten-Registry nicht gefunden."
+    },
+    "entity_has_no_device": {
+      "message": "Entität {entity_id} ist keinem Gerät zugeordnet."
+    },
+    "token_read_only": {
+      "message": "Diese Aktion benötigt ein Stockroom-Token mit Schreibberechtigung, das konfigurierte Token ist jedoch schreibgeschützt."
+    },
+    "invalid_token": {
+      "message": "Das konfigurierte Stockroom-Token ist ungültig. Authentifiziere die Integration erneut."
+    },
+    "validation_failed": {
+      "message": "Stockroom hat die Anfrage abgelehnt: {message}"
+    },
+    "link_conflict": {
+      "message": "Verknüpfung nicht möglich: {detail}"
+    },
+    "not_linked": {
+      "message": "Aufheben nicht möglich: {detail}"
+    }
+  }
+}
