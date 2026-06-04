@@ -27,6 +27,7 @@
     "error": {
       "cannot_connect": "Verbindung fehlgeschlagen",
       "invalid_auth": "Ungültige Authentifizierung",
+      "api_error": "Stockroom hat mit einer unerwarteten Antwort reagiert (z. B. einem Serverfehler). Prüfe die Stockroom-Server-Logs; Details stehen im Home-Assistant-Log.",
       "unknown": "Unerwarteter Fehler"
     },
     "abort": {

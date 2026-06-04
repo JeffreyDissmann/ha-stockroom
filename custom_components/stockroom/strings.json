@@ -27,6 +27,7 @@
     "error": {
       "cannot_connect": "Failed to connect",
       "invalid_auth": "Invalid authentication",
+      "api_error": "Stockroom answered with an unexpected response (for example a server error). Check the Stockroom server logs; details are in the Home Assistant log.",
       "unknown": "Unexpected error"
     },
     "abort": {

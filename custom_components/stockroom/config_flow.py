@@ -90,6 +90,9 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         raise InvalidAuth(str(err)) from err
     except StockroomConnectionError as err:
         raise CannotConnect from err
+    except StockroomApiError as err:
+        # e.g. a 5xx, an unexpected status, or a non-JSON body.
+        raise UnexpectedResponse(str(err)) from err
 
     return {
         "title": data.get(CONF_NAME) or DEFAULT_NAME,
@@ -125,6 +128,9 @@ class StockroomConfigFlow(ConfigFlow, domain=DOMAIN):
             except InvalidAuth as err:
                 errors["base"] = "invalid_auth"
                 self._auth_error_detail = str(err)
+            except UnexpectedResponse as err:
+                _LOGGER.error("Stockroom returned an unexpected response: %s", err)
+                errors["base"] = "api_error"
             except Exception:
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -172,6 +178,9 @@ class StockroomConfigFlow(ConfigFlow, domain=DOMAIN):
             except InvalidAuth as err:
                 errors["base"] = "invalid_auth"
                 self._auth_error_detail = str(err)
+            except UnexpectedResponse as err:
+                _LOGGER.error("Stockroom returned an unexpected response: %s", err)
+                errors["base"] = "api_error"
             except Exception:
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -1219,3 +1228,7 @@ class CannotConnect(HomeAssistantError):
 
 class InvalidAuth(HomeAssistantError):
     """Error to indicate invalid authentication."""
+
+
+class UnexpectedResponse(HomeAssistantError):
+    """Stockroom answered, but with an unexpected response (e.g. a 5xx)."""

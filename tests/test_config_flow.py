@@ -54,6 +54,21 @@ async def test_user_flow_invalid_auth(hass: HomeAssistant) -> None:
     assert result["errors"] == {"base": "invalid_auth"}
 
 
+async def test_user_flow_server_error_shows_api_error(hass: HomeAssistant) -> None:
+    """A 5xx from Stockroom surfaces a clear api_error instead of 'unknown'."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    with aioresponses() as mocked:
+        mocked.get(URL_USER, status=500, payload={"message": "Server Error"})
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], MOCK_CONFIG
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "api_error"}
+
+
 async def test_user_flow_cannot_connect(hass: HomeAssistant) -> None:
     """A transport error surfaces a cannot_connect error."""
     result = await hass.config_entries.flow.async_init(
