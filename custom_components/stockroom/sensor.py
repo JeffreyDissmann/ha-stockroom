@@ -74,6 +74,22 @@ SENSOR_DESCRIPTIONS: Final[tuple[StockroomSensorEntityDescription, ...]] = (
         native_unit_of_measurement="items",
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    StockroomSensorEntityDescription(
+        key="maintenance_overdue",
+        value_key="maintenance_overdue",
+        translation_key="maintenance_overdue",
+        icon="mdi:wrench-clock",
+        native_unit_of_measurement="tasks",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    StockroomSensorEntityDescription(
+        key="maintenance_due_soon",
+        value_key="maintenance_due_soon",
+        translation_key="maintenance_due_soon",
+        icon="mdi:calendar-clock",
+        native_unit_of_measurement="tasks",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
 )
 
 

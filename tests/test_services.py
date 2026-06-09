@@ -13,8 +13,11 @@ from custom_components.stockroom.const import (
     CONF_HA_DEVICE_TO_ITEM,
     CONF_LINKS,
     DOMAIN,
+    SERVICE_COMPLETE_MAINTENANCE_TASK,
     SERVICE_CREATE_AND_LINK_ITEM,
+    SERVICE_CREATE_MAINTENANCE_TASK,
     SERVICE_LINK_ITEM,
+    SERVICE_LIST_MAINTENANCE_TASKS,
     SERVICE_SEARCH,
     SERVICE_UNLINK_ITEM,
 )
@@ -23,6 +26,8 @@ from custom_components.stockroom.linking import get_link_maps
 from .const import (
     ITEM_42_PAYLOAD,
     LINK_RESPONSE,
+    MAINTENANCE_TASK_PAYLOAD,
+    MAINTENANCE_TASKS_PAYLOAD,
     MOCK_CONFIG,
     MOCK_HOST,
     SEARCH_PAYLOAD,
@@ -31,6 +36,8 @@ from .const import (
     URL_HA_LINKS,
     URL_ITEM,
     URL_ITEMS,
+    URL_MAINTENANCE_COMPLETE,
+    URL_MAINTENANCE_TASKS,
     URL_SEARCH,
     URL_STATISTICS,
 )
@@ -206,3 +213,177 @@ async def test_search_service_returns_results(hass: HomeAssistant) -> None:
         )
 
     assert response["results"][0]["name"] == "Cordless Drill"
+
+
+async def test_list_maintenance_tasks_by_item_id(hass: HomeAssistant) -> None:
+    """list_maintenance_tasks accepts a raw item_id and returns the tasks."""
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(
+            URL_MAINTENANCE_TASKS, payload=MAINTENANCE_TASKS_PAYLOAD, repeat=True
+        )
+        await _setup_entry(hass)
+
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_LIST_MAINTENANCE_TASKS,
+            {"item_id": 42},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert response["tasks"][0]["title"] == "Descale"
+
+
+async def test_list_maintenance_tasks_by_linked_device(hass: HomeAssistant) -> None:
+    """list_maintenance_tasks resolves a linked device to its item."""
+    device_id, _ = _make_linked_device(hass)
+    options = {
+        CONF_LINKS: {
+            CONF_HA_DEVICE_TO_ITEM: {device_id: 42},
+            "item_to_ha_device": {"42": device_id},
+        }
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
+        mocked.get(
+            URL_MAINTENANCE_TASKS, payload=MAINTENANCE_TASKS_PAYLOAD, repeat=True
+        )
+        await _setup_entry(hass, options=options)
+
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_LIST_MAINTENANCE_TASKS,
+            {"device_id": device_id},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert response["tasks"][0]["id"] == 7
+
+
+async def test_list_maintenance_tasks_unlinked_device_errors(
+    hass: HomeAssistant,
+) -> None:
+    """An unlinked device raises a clear device_not_linked error."""
+    device_id, _ = _make_linked_device(hass)
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        await _setup_entry(hass)
+
+        with pytest.raises(ServiceValidationError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_LIST_MAINTENANCE_TASKS,
+                {"device_id": device_id},
+                blocking=True,
+                return_response=True,
+            )
+    assert err.value.translation_key == "device_not_linked"
+
+
+async def test_create_maintenance_task_service(hass: HomeAssistant) -> None:
+    """create_maintenance_task posts a built payload and returns the task."""
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.post(
+            URL_MAINTENANCE_TASKS,
+            status=201,
+            payload=MAINTENANCE_TASK_PAYLOAD,
+            repeat=True,
+        )
+        await _setup_entry(hass)
+
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CREATE_MAINTENANCE_TASK,
+            {
+                "item_id": 42,
+                "title": "Descale",
+                "schedule_type": "interval",
+                "interval_value": 3,
+                "interval_unit": "months",
+            },
+            blocking=True,
+            return_response=True,
+        )
+
+        assert response["task"]["id"] == 7
+        post_request = next(
+            req
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "POST"
+        )
+        assert post_request.kwargs["json"] == {
+            "title": "Descale",
+            "schedule_type": "interval",
+            "interval_value": 3,
+            "interval_unit": "months",
+        }
+
+
+async def test_create_maintenance_task_one_off_serializes_date(
+    hass: HomeAssistant,
+) -> None:
+    """A one-off task serializes next_due_at as an ISO date string."""
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.post(
+            URL_MAINTENANCE_TASKS,
+            status=201,
+            payload=MAINTENANCE_TASK_PAYLOAD,
+            repeat=True,
+        )
+        await _setup_entry(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CREATE_MAINTENANCE_TASK,
+            {
+                "item_id": 42,
+                "title": "Replace battery",
+                "schedule_type": "one_off",
+                "next_due_at": "2026-12-01",
+            },
+            blocking=True,
+        )
+
+        post_request = next(
+            req
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "POST"
+        )
+        assert post_request.kwargs["json"]["next_due_at"] == "2026-12-01"
+
+
+async def test_complete_maintenance_task_service(hass: HomeAssistant) -> None:
+    """complete_maintenance_task posts to the complete endpoint by task id."""
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.post(
+            URL_MAINTENANCE_COMPLETE, payload=MAINTENANCE_TASK_PAYLOAD, repeat=True
+        )
+        await _setup_entry(hass)
+
+        response = await hass.services.async_call(
+            DOMAIN,
+            SERVICE_COMPLETE_MAINTENANCE_TASK,
+            {"task_id": 7, "cost": 4.5, "notes": "Used citric acid."},
+            blocking=True,
+            return_response=True,
+        )
+
+        assert response["task"]["id"] == 7
+        post_request = next(
+            req
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "POST"
+        )
+        assert post_request.kwargs["json"] == {
+            "cost": 4.5,
+            "notes": "Used citric acid.",
+        }

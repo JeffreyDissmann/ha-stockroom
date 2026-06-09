@@ -25,6 +25,9 @@ SERVICE_LINK_ITEM = "link_item"
 SERVICE_UNLINK_ITEM = "unlink_item"
 SERVICE_CREATE_AND_LINK_ITEM = "create_and_link_item"
 SERVICE_SEARCH = "search"
+SERVICE_LIST_MAINTENANCE_TASKS = "list_maintenance_tasks"
+SERVICE_CREATE_MAINTENANCE_TASK = "create_maintenance_task"
+SERVICE_COMPLETE_MAINTENANCE_TASK = "complete_maintenance_task"
 
 # Service / attribute fields.
 ATTR_ENTITY_ID = "entity_id"
@@ -38,6 +41,27 @@ ATTR_MANUFACTURER = "manufacturer"
 ATTR_MODEL_NUMBER = "model_number"
 ATTR_SERIAL_NUMBER = "serial_number"
 ATTR_DESCRIPTION = "description"
+
+# Maintenance-task service fields.
+ATTR_DEVICE_ID = "device_id"
+ATTR_TASK_ID = "task_id"
+ATTR_TITLE = "title"
+ATTR_SCHEDULE_TYPE = "schedule_type"
+ATTR_INTERVAL_VALUE = "interval_value"
+ATTR_INTERVAL_UNIT = "interval_unit"
+ATTR_NEXT_DUE_AT = "next_due_at"
+ATTR_REMINDER_LEAD_DAYS = "reminder_lead_days"
+ATTR_COMPLETED_AT = "completed_at"
+ATTR_NOTES = "notes"
+ATTR_COST = "cost"
+
+# Maintenance schedule vocabulary mirrored from the Stockroom API. Only the two
+# API-creatable schedule types are exposed; fixed-calendar (RRULE) schedules are
+# web-only. See docs/api.md "POST /items/{item}/maintenance-tasks".
+SCHEDULE_TYPE_INTERVAL = "interval"
+SCHEDULE_TYPE_ONE_OFF = "one_off"
+MAINTENANCE_SCHEDULE_TYPES = (SCHEDULE_TYPE_INTERVAL, SCHEDULE_TYPE_ONE_OFF)
+MAINTENANCE_INTERVAL_UNITS = ("days", "weeks", "months", "years")
 
 # Options-flow (GUI linking wizard) fields.
 CONF_DEVICE_ID = "device_id"

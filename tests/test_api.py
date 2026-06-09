@@ -18,6 +18,8 @@ from custom_components.stockroom.api import (
 
 from .const import (
     ITEM_42_PAYLOAD,
+    MAINTENANCE_TASK_PAYLOAD,
+    MAINTENANCE_TASKS_PAYLOAD,
     MOCK_HOST,
     MOCK_TOKEN,
     STATISTICS_PAYLOAD,
@@ -25,6 +27,8 @@ from .const import (
     URL_HA_LINKS,
     URL_ITEM,
     URL_ITEMS,
+    URL_MAINTENANCE_COMPLETE,
+    URL_MAINTENANCE_TASKS,
     URL_STATISTICS,
     URL_USER,
 )
@@ -62,6 +66,58 @@ async def test_get_statistics_parsed(session: aiohttp.ClientSession) -> None:
     assert stats.total == 120
     assert stats.value == pytest.approx(3456.78)
     assert (stats.rooms, stats.containers, stats.items) == (5, 12, 103)
+    assert (stats.maintenance_overdue, stats.maintenance_due_soon) == (2, 1)
+
+
+async def test_statistics_without_maintenance_defaults_to_zero(
+    session: aiohttp.ClientSession,
+) -> None:
+    """A server without the maintenance block parses with zeroed counters."""
+    payload = {
+        "total": 1,
+        "value": 0,
+        "by_type": {"room": 0, "container": 0, "item": 1},
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=payload)
+        stats = await _client(session).async_get_statistics()
+
+    assert (stats.maintenance_overdue, stats.maintenance_due_soon) == (0, 0)
+
+
+async def test_get_maintenance_tasks(session: aiohttp.ClientSession) -> None:
+    """async_get_maintenance_tasks returns the task list for an item."""
+    with aioresponses() as mocked:
+        mocked.get(URL_MAINTENANCE_TASKS, payload=MAINTENANCE_TASKS_PAYLOAD)
+        tasks = await _client(session).async_get_maintenance_tasks(42)
+
+    assert [task["id"] for task in tasks] == [7]
+    assert tasks[0]["is_overdue"] is True
+
+
+async def test_create_maintenance_task(session: aiohttp.ClientSession) -> None:
+    """async_create_maintenance_task posts the payload and unwraps the task."""
+    with aioresponses() as mocked:
+        mocked.post(URL_MAINTENANCE_TASKS, status=201, payload=MAINTENANCE_TASK_PAYLOAD)
+        task = await _client(session).async_create_maintenance_task(
+            42,
+            {"title": "Descale", "schedule_type": "interval", "interval_value": 3},
+        )
+
+        assert task["id"] == 7
+        request = next(iter(mocked.requests.values()))[0]
+        assert request.kwargs["json"]["title"] == "Descale"
+
+
+async def test_complete_maintenance_task(session: aiohttp.ClientSession) -> None:
+    """async_complete_maintenance_task posts to the complete endpoint."""
+    with aioresponses() as mocked:
+        mocked.post(URL_MAINTENANCE_COMPLETE, payload=MAINTENANCE_TASK_PAYLOAD)
+        task = await _client(session).async_complete_maintenance_task(7, {"cost": 4.5})
+
+        assert task["id"] == 7
+        request = next(iter(mocked.requests.values()))[0]
+        assert request.kwargs["json"] == {"cost": 4.5}
 
 
 async def test_401_raises_authentication_error(

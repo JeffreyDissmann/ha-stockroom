@@ -222,12 +222,22 @@ class StockroomApiClient:
             raw = by_type.get(key)
             return raw if isinstance(raw, int) else 0
 
+        maintenance = payload.get("maintenance")
+        if not isinstance(maintenance, dict):
+            maintenance = {}
+
+        def _maintenance(key: str) -> int:
+            raw = maintenance.get(key)
+            return raw if isinstance(raw, int) else 0
+
         return StockroomStatistics(
             total=total,
             value=float(value),
             rooms=_count("room"),
             containers=_count("container"),
             items=_count("item"),
+            maintenance_overdue=_maintenance("overdue"),
+            maintenance_due_soon=_maintenance("due_soon"),
         )
 
     async def async_get_items(
@@ -323,6 +333,22 @@ class StockroomApiClient:
             raise StockroomApiError("Stockroom tags response is invalid")
         return [tag for tag in data["data"] if isinstance(tag, dict)]
 
+    async def async_get_maintenance_tasks(self, item_id: int) -> list[dict[str, Any]]:
+        """Return the maintenance schedules on an item.
+
+        Calls ``GET /items/{id}/maintenance-tasks``; each element is a task in
+        the locale-neutral resource shape (raw rule fields plus computed
+        ``due_in_days`` / ``is_overdue`` / ``needs_attention``).
+        """
+        data = await self._async_request(
+            "GET",
+            f"items/{item_id}/maintenance-tasks",
+            error_context="maintenance tasks request",
+        )
+        if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+            raise StockroomApiError("Stockroom maintenance tasks response is invalid")
+        return [task for task in data["data"] if isinstance(task, dict)]
+
     async def async_search(self, query: str) -> list[dict[str, Any]]:
         """Search for items (``GET /search?q=``)."""
         data = await self._async_request(
@@ -358,6 +384,46 @@ class StockroomApiClient:
         )
         if not isinstance(data, dict) or not isinstance(data.get("data"), dict):
             raise StockroomApiError("Stockroom update item response is invalid")
+        return data["data"]
+
+    async def async_create_maintenance_task(
+        self, item_id: int, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create a maintenance schedule on an item.
+
+        Calls ``POST /items/{id}/maintenance-tasks`` and returns the created
+        task resource.
+        """
+        data = await self._async_request(
+            "POST",
+            f"items/{item_id}/maintenance-tasks",
+            error_context="create maintenance task",
+            payload=payload,
+        )
+        if not isinstance(data, dict) or not isinstance(data.get("data"), dict):
+            raise StockroomApiError(
+                "Stockroom create maintenance task response is invalid"
+            )
+        return data["data"]
+
+    async def async_complete_maintenance_task(
+        self, task_id: int, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Mark a maintenance task done, rolling its schedule forward.
+
+        Calls ``POST /maintenance-tasks/{id}/complete`` and returns the updated
+        task resource. Completing an already-archived task is a 422.
+        """
+        data = await self._async_request(
+            "POST",
+            f"maintenance-tasks/{task_id}/complete",
+            error_context="complete maintenance task",
+            payload=payload or {},
+        )
+        if not isinstance(data, dict) or not isinstance(data.get("data"), dict):
+            raise StockroomApiError(
+                "Stockroom complete maintenance task response is invalid"
+            )
         return data["data"]
 
     async def async_set_item_ha_link(

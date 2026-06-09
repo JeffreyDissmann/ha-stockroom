@@ -93,3 +93,158 @@ search:
       example: drill
       selector:
         text:
+
+list_maintenance_tasks:
+  name: List maintenance tasks
+  description: >
+    Returns the maintenance schedules on a Stockroom item. Identify the item by
+    a linked device or by its Stockroom item ID.
+  fields:
+    device_id:
+      name: Device
+      description: >
+        A Home Assistant device linked to the Stockroom item. Provide this or the
+        item ID.
+      required: false
+      selector:
+        device:
+          filter:
+            - integration: stockroom
+    item_id:
+      name: Stockroom item ID
+      description: Numeric ID of the Stockroom item. Provide this or a device.
+      required: false
+      example: 42
+      selector:
+        number:
+          min: 1
+          mode: box
+
+create_maintenance_task:
+  name: Create maintenance task
+  description: >
+    Creates a maintenance reminder on a Stockroom item — a repeating interval or
+    a one-off due date.
+  fields:
+    device_id:
+      name: Device
+      description: >
+        A Home Assistant device linked to the Stockroom item. Provide this or the
+        item ID.
+      required: false
+      selector:
+        device:
+          filter:
+            - integration: stockroom
+    item_id:
+      name: Stockroom item ID
+      description: Numeric ID of the Stockroom item. Provide this or a device.
+      required: false
+      example: 42
+      selector:
+        number:
+          min: 1
+          mode: box
+    title:
+      name: Title
+      description: Name of the maintenance task (for example, "Descale").
+      required: true
+      example: Descale
+      selector:
+        text:
+    schedule_type:
+      name: Schedule type
+      description: >
+        A repeating interval (re-bases after each completion), or a one-off
+        single due date that archives itself once done.
+      required: false
+      default: interval
+      selector:
+        select:
+          translation_key: maintenance_schedule_type
+          options:
+            - interval
+            - one_off
+    interval_value:
+      name: Interval value
+      description: How many units between occurrences (required for interval tasks).
+      required: false
+      example: 3
+      selector:
+        number:
+          min: 1
+          max: 999
+          mode: box
+    interval_unit:
+      name: Interval unit
+      description: Unit of the interval (required for interval tasks).
+      required: false
+      selector:
+        select:
+          translation_key: maintenance_interval_unit
+          options:
+            - days
+            - weeks
+            - months
+            - years
+    next_due_at:
+      name: Next due date
+      description: First due date (required for one-off tasks).
+      required: false
+      selector:
+        date:
+    description:
+      name: Description
+      description: Optional notes about the task.
+      required: false
+      selector:
+        text:
+          multiline: true
+    reminder_lead_days:
+      name: Reminder lead days
+      description: How many days before the due date the task starts needing attention.
+      required: false
+      default: 7
+      selector:
+        number:
+          min: 0
+          max: 365
+          mode: box
+
+complete_maintenance_task:
+  name: Complete maintenance task
+  description: >
+    Marks a maintenance task done, recording a history entry and rolling its
+    schedule forward. Use the task ID from "List maintenance tasks".
+  fields:
+    task_id:
+      name: Task ID
+      description: Numeric ID of the maintenance task to complete.
+      required: true
+      example: 7
+      selector:
+        number:
+          min: 1
+          mode: box
+    completed_at:
+      name: Completed on
+      description: When the task was done (defaults to today; cannot be in the future).
+      required: false
+      selector:
+        date:
+    notes:
+      name: Notes
+      description: Optional notes recorded with the completion.
+      required: false
+      selector:
+        text:
+          multiline: true
+    cost:
+      name: Cost
+      description: Optional cost of the maintenance.
+      required: false
+      selector:
+        number:
+          min: 0
+          step: 0.01
+          mode: box

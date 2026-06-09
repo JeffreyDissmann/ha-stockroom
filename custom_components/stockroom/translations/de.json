@@ -220,6 +220,20 @@
         "container": "Behälter",
         "item": "Gegenstand"
       }
+    },
+    "maintenance_schedule_type": {
+      "options": {
+        "interval": "Intervall (wiederkehrend)",
+        "one_off": "Einmalig (einzelnes Fälligkeitsdatum)"
+      }
+    },
+    "maintenance_interval_unit": {
+      "options": {
+        "days": "Tage",
+        "weeks": "Wochen",
+        "months": "Monate",
+        "years": "Jahre"
+      }
     }
   },
   "entity": {
@@ -238,6 +252,12 @@
       },
       "items": {
         "name": "Gegenstände"
+      },
+      "maintenance_overdue": {
+        "name": "Wartung überfällig"
+      },
+      "maintenance_due_soon": {
+        "name": "Wartung bald fällig"
       },
       "linked_item": {
         "name": "Stockroom-Objekt"
@@ -304,6 +324,84 @@
           "description": "Zu suchender Text (zum Beispiel „Wo ist die Bohrmaschine?“)."
         }
       }
+    },
+    "list_maintenance_tasks": {
+      "name": "Wartungsaufgaben auflisten",
+      "description": "Gibt die Wartungspläne eines Stockroom-Objekts zurück. Das Objekt wird über ein verknüpftes Gerät oder die Stockroom-Objekt-ID bestimmt.",
+      "fields": {
+        "device_id": {
+          "name": "Gerät",
+          "description": "Ein Home-Assistant-Gerät, das mit dem Stockroom-Objekt verknüpft ist. Entweder dies oder die Objekt-ID angeben."
+        },
+        "item_id": {
+          "name": "Stockroom-Objekt-ID",
+          "description": "Numerische ID des Stockroom-Objekts. Entweder dies oder ein Gerät angeben."
+        }
+      }
+    },
+    "create_maintenance_task": {
+      "name": "Wartungsaufgabe erstellen",
+      "description": "Erstellt eine Wartungserinnerung an einem Stockroom-Objekt — ein wiederkehrendes Intervall oder ein einmaliges Fälligkeitsdatum.",
+      "fields": {
+        "device_id": {
+          "name": "Gerät",
+          "description": "Ein Home-Assistant-Gerät, das mit dem Stockroom-Objekt verknüpft ist. Entweder dies oder die Objekt-ID angeben."
+        },
+        "item_id": {
+          "name": "Stockroom-Objekt-ID",
+          "description": "Numerische ID des Stockroom-Objekts. Entweder dies oder ein Gerät angeben."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Name der Wartungsaufgabe (zum Beispiel „Entkalken“)."
+        },
+        "schedule_type": {
+          "name": "Planungstyp",
+          "description": "Ein wiederkehrendes Intervall (setzt nach jedem Abschluss neu an) oder ein einmaliges Fälligkeitsdatum, das sich nach Abschluss selbst archiviert."
+        },
+        "interval_value": {
+          "name": "Intervallwert",
+          "description": "Wie viele Einheiten zwischen den Vorkommen liegen (für Intervallaufgaben erforderlich)."
+        },
+        "interval_unit": {
+          "name": "Intervalleinheit",
+          "description": "Einheit des Intervalls (für Intervallaufgaben erforderlich)."
+        },
+        "next_due_at": {
+          "name": "Nächste Fälligkeit",
+          "description": "Erstes Fälligkeitsdatum (für einmalige Aufgaben erforderlich)."
+        },
+        "description": {
+          "name": "Beschreibung",
+          "description": "Optionale Notizen zur Aufgabe."
+        },
+        "reminder_lead_days": {
+          "name": "Vorlauftage für Erinnerung",
+          "description": "Wie viele Tage vor dem Fälligkeitsdatum die Aufgabe Aufmerksamkeit erfordert."
+        }
+      }
+    },
+    "complete_maintenance_task": {
+      "name": "Wartungsaufgabe abschließen",
+      "description": "Markiert eine Wartungsaufgabe als erledigt, erfasst einen Verlaufseintrag und setzt den Plan fort. Verwende die Aufgaben-ID aus „Wartungsaufgaben auflisten“.",
+      "fields": {
+        "task_id": {
+          "name": "Aufgaben-ID",
+          "description": "Numerische ID der abzuschließenden Wartungsaufgabe."
+        },
+        "completed_at": {
+          "name": "Erledigt am",
+          "description": "Wann die Aufgabe erledigt wurde (Standard ist heute; darf nicht in der Zukunft liegen)."
+        },
+        "notes": {
+          "name": "Notizen",
+          "description": "Optionale Notizen, die mit dem Abschluss erfasst werden."
+        },
+        "cost": {
+          "name": "Kosten",
+          "description": "Optionale Kosten der Wartung."
+        }
+      }
     }
   },
   "exceptions": {
@@ -330,6 +428,9 @@
     },
     "not_linked": {
       "message": "Aufheben nicht möglich: {detail}"
+    },
+    "device_not_linked": {
+      "message": "Gerät {device} ist mit keinem Stockroom-Objekt verknüpft. Verknüpfe es zuerst oder gib eine Stockroom-Objekt-ID an."
     }
   }
 }

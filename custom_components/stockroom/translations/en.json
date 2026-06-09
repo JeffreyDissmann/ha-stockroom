@@ -220,6 +220,20 @@
         "container": "Container",
         "item": "Item"
       }
+    },
+    "maintenance_schedule_type": {
+      "options": {
+        "interval": "Interval (repeats after completion)",
+        "one_off": "One-off (single due date)"
+      }
+    },
+    "maintenance_interval_unit": {
+      "options": {
+        "days": "Days",
+        "weeks": "Weeks",
+        "months": "Months",
+        "years": "Years"
+      }
     }
   },
   "entity": {
@@ -238,6 +252,12 @@
       },
       "items": {
         "name": "Items"
+      },
+      "maintenance_overdue": {
+        "name": "Maintenance overdue"
+      },
+      "maintenance_due_soon": {
+        "name": "Maintenance due soon"
       },
       "linked_item": {
         "name": "Stockroom item"
@@ -304,6 +324,84 @@
           "description": "Text to search for (for example, \"where is the drill?\")."
         }
       }
+    },
+    "list_maintenance_tasks": {
+      "name": "List maintenance tasks",
+      "description": "Returns the maintenance schedules on a Stockroom item. Identify the item by a linked device or by its Stockroom item ID.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "A Home Assistant device linked to the Stockroom item. Provide this or the item ID."
+        },
+        "item_id": {
+          "name": "Stockroom item ID",
+          "description": "Numeric ID of the Stockroom item. Provide this or a device."
+        }
+      }
+    },
+    "create_maintenance_task": {
+      "name": "Create maintenance task",
+      "description": "Creates a maintenance reminder on a Stockroom item — a repeating interval or a one-off due date.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "A Home Assistant device linked to the Stockroom item. Provide this or the item ID."
+        },
+        "item_id": {
+          "name": "Stockroom item ID",
+          "description": "Numeric ID of the Stockroom item. Provide this or a device."
+        },
+        "title": {
+          "name": "Title",
+          "description": "Name of the maintenance task (for example, \"Descale\")."
+        },
+        "schedule_type": {
+          "name": "Schedule type",
+          "description": "A repeating interval (re-bases after each completion), or a one-off single due date that archives itself once done."
+        },
+        "interval_value": {
+          "name": "Interval value",
+          "description": "How many units between occurrences (required for interval tasks)."
+        },
+        "interval_unit": {
+          "name": "Interval unit",
+          "description": "Unit of the interval (required for interval tasks)."
+        },
+        "next_due_at": {
+          "name": "Next due date",
+          "description": "First due date (required for one-off tasks)."
+        },
+        "description": {
+          "name": "Description",
+          "description": "Optional notes about the task."
+        },
+        "reminder_lead_days": {
+          "name": "Reminder lead days",
+          "description": "How many days before the due date the task starts needing attention."
+        }
+      }
+    },
+    "complete_maintenance_task": {
+      "name": "Complete maintenance task",
+      "description": "Marks a maintenance task done, recording a history entry and rolling its schedule forward. Use the task ID from \"List maintenance tasks\".",
+      "fields": {
+        "task_id": {
+          "name": "Task ID",
+          "description": "Numeric ID of the maintenance task to complete."
+        },
+        "completed_at": {
+          "name": "Completed on",
+          "description": "When the task was done (defaults to today; cannot be in the future)."
+        },
+        "notes": {
+          "name": "Notes",
+          "description": "Optional notes recorded with the completion."
+        },
+        "cost": {
+          "name": "Cost",
+          "description": "Optional cost of the maintenance."
+        }
+      }
     }
   },
   "exceptions": {
@@ -330,6 +428,9 @@
     },
     "not_linked": {
       "message": "Cannot unlink: {detail}"
+    },
+    "device_not_linked": {
+      "message": "Device {device} is not linked to a Stockroom item. Link it first, or pass a Stockroom item ID."
     }
   }
 }

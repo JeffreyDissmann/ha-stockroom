@@ -28,23 +28,41 @@ from .api import (
     StockroomValidationError,
 )
 from .const import (
+    ATTR_COMPLETED_AT,
+    ATTR_COST,
+    ATTR_DESCRIPTION,
+    ATTR_DEVICE_ID,
     ATTR_ENTITY_ID,
     ATTR_FRIENDLY_NAME,
+    ATTR_INTERVAL_UNIT,
+    ATTR_INTERVAL_VALUE,
     ATTR_ITEM_ID,
     ATTR_NAME,
+    ATTR_NEXT_DUE_AT,
+    ATTR_NOTES,
     ATTR_PARENT_ID,
     ATTR_QUERY,
+    ATTR_REMINDER_LEAD_DAYS,
+    ATTR_SCHEDULE_TYPE,
+    ATTR_TASK_ID,
+    ATTR_TITLE,
     ATTR_TYPE,
     DEFAULT_ITEM_TYPE,
     DOMAIN,
     ITEM_TYPES,
+    MAINTENANCE_INTERVAL_UNITS,
+    MAINTENANCE_SCHEDULE_TYPES,
+    SCHEDULE_TYPE_INTERVAL,
+    SERVICE_COMPLETE_MAINTENANCE_TASK,
     SERVICE_CREATE_AND_LINK_ITEM,
+    SERVICE_CREATE_MAINTENANCE_TASK,
     SERVICE_LINK_ITEM,
+    SERVICE_LIST_MAINTENANCE_TASKS,
     SERVICE_SEARCH,
     SERVICE_UNLINK_ITEM,
 )
 from .coordinator import StockroomConfigEntry
-from .linking import apply_link, remove_link
+from .linking import apply_link, device_friendly_name, get_link_maps, remove_link
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,6 +92,51 @@ CREATE_AND_LINK_ITEM_SCHEMA = vol.Schema(
 SEARCH_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_QUERY): cv.string,
+    }
+)
+
+# Maintenance services target a Stockroom item either directly (item_id) or via
+# a linked Home Assistant device (resolved to its item). At least one is
+# required. Linking is device-based, so the picker is a device, not an entity.
+LIST_MAINTENANCE_TASKS_SCHEMA = vol.Schema(
+    vol.All(
+        {
+            vol.Optional(ATTR_DEVICE_ID): cv.string,
+            vol.Optional(ATTR_ITEM_ID): vol.Coerce(int),
+        },
+        cv.has_at_least_one_key(ATTR_DEVICE_ID, ATTR_ITEM_ID),
+    )
+)
+
+CREATE_MAINTENANCE_TASK_SCHEMA = vol.Schema(
+    vol.All(
+        {
+            vol.Optional(ATTR_DEVICE_ID): cv.string,
+            vol.Optional(ATTR_ITEM_ID): vol.Coerce(int),
+            vol.Required(ATTR_TITLE): cv.string,
+            vol.Optional(ATTR_SCHEDULE_TYPE, default=SCHEDULE_TYPE_INTERVAL): vol.In(
+                MAINTENANCE_SCHEDULE_TYPES
+            ),
+            vol.Optional(ATTR_INTERVAL_VALUE): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=999)
+            ),
+            vol.Optional(ATTR_INTERVAL_UNIT): vol.In(MAINTENANCE_INTERVAL_UNITS),
+            vol.Optional(ATTR_NEXT_DUE_AT): cv.date,
+            vol.Optional(ATTR_DESCRIPTION): cv.string,
+            vol.Optional(ATTR_REMINDER_LEAD_DAYS): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=365)
+            ),
+        },
+        cv.has_at_least_one_key(ATTR_DEVICE_ID, ATTR_ITEM_ID),
+    )
+)
+
+COMPLETE_MAINTENANCE_TASK_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_TASK_ID): vol.Coerce(int),
+        vol.Optional(ATTR_COMPLETED_AT): cv.date,
+        vol.Optional(ATTR_NOTES): cv.string,
+        vol.Optional(ATTR_COST): vol.All(vol.Coerce(float), vol.Range(min=0)),
     }
 )
 
@@ -118,6 +181,29 @@ def _resolve_device(hass: HomeAssistant, entity_id: str) -> dr.DeviceEntry:
 def _device_friendly_name(device: dr.DeviceEntry, fallback: str) -> str:
     """Return a human-friendly name for a device."""
     return device.name_by_user or device.name or fallback
+
+
+def _resolve_target_item_id(
+    hass: HomeAssistant, entry: StockroomConfigEntry, call: ServiceCall
+) -> int:
+    """Resolve a maintenance service call to its target Stockroom item id.
+
+    Prefers an explicit ``item_id``; otherwise looks up the linked item for the
+    given ``device_id``. The schema guarantees one of the two is present.
+    """
+    if (item_id := call.data.get(ATTR_ITEM_ID)) is not None:
+        return int(item_id)
+
+    device_id = call.data[ATTR_DEVICE_ID]
+    ha_device_to_item, _ = get_link_maps(entry)
+    item_id = ha_device_to_item.get(device_id)
+    if item_id is None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="device_not_linked",
+            translation_placeholders={"device": device_friendly_name(hass, device_id)},
+        )
+    return item_id
 
 
 def _map_api_error(err: Exception) -> HomeAssistantError:
@@ -232,6 +318,56 @@ def async_setup_services(hass: HomeAssistant) -> None:
             raise _map_api_error(err) from err
         return {"results": results}
 
+    async def _handle_list_maintenance_tasks(call: ServiceCall) -> ServiceResponse:
+        entry = _get_loaded_entry(hass)
+        item_id = _resolve_target_item_id(hass, entry, call)
+        try:
+            tasks = await entry.runtime_data.api.async_get_maintenance_tasks(item_id)
+        except StockroomApiError as err:
+            raise _map_api_error(err) from err
+        return {"tasks": tasks}
+
+    async def _handle_create_maintenance_task(call: ServiceCall) -> ServiceResponse:
+        entry = _get_loaded_entry(hass)
+        item_id = _resolve_target_item_id(hass, entry, call)
+        payload: dict[str, Any] = {
+            ATTR_TITLE: call.data[ATTR_TITLE],
+            ATTR_SCHEDULE_TYPE: call.data[ATTR_SCHEDULE_TYPE],
+        }
+        for key in (
+            ATTR_INTERVAL_VALUE,
+            ATTR_INTERVAL_UNIT,
+            ATTR_DESCRIPTION,
+            ATTR_REMINDER_LEAD_DAYS,
+        ):
+            if (value := call.data.get(key)) is not None:
+                payload[key] = value
+        if (next_due := call.data.get(ATTR_NEXT_DUE_AT)) is not None:
+            payload[ATTR_NEXT_DUE_AT] = next_due.isoformat()
+        try:
+            task = await entry.runtime_data.api.async_create_maintenance_task(
+                item_id, payload
+            )
+        except StockroomApiError as err:
+            raise _map_api_error(err) from err
+        return {"task": task}
+
+    async def _handle_complete_maintenance_task(call: ServiceCall) -> ServiceResponse:
+        entry = _get_loaded_entry(hass)
+        payload: dict[str, Any] = {}
+        if (completed_at := call.data.get(ATTR_COMPLETED_AT)) is not None:
+            payload[ATTR_COMPLETED_AT] = completed_at.isoformat()
+        for key in (ATTR_NOTES, ATTR_COST):
+            if (value := call.data.get(key)) is not None:
+                payload[key] = value
+        try:
+            task = await entry.runtime_data.api.async_complete_maintenance_task(
+                call.data[ATTR_TASK_ID], payload
+            )
+        except StockroomApiError as err:
+            raise _map_api_error(err) from err
+        return {"task": task}
+
     hass.services.async_register(
         DOMAIN, SERVICE_LINK_ITEM, _handle_link_item, LINK_ITEM_SCHEMA
     )
@@ -251,6 +387,27 @@ def async_setup_services(hass: HomeAssistant) -> None:
         SEARCH_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_LIST_MAINTENANCE_TASKS,
+        _handle_list_maintenance_tasks,
+        LIST_MAINTENANCE_TASKS_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CREATE_MAINTENANCE_TASK,
+        _handle_create_maintenance_task,
+        CREATE_MAINTENANCE_TASK_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_COMPLETE_MAINTENANCE_TASK,
+        _handle_complete_maintenance_task,
+        COMPLETE_MAINTENANCE_TASK_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
 
 def async_unload_services(hass: HomeAssistant) -> None:
@@ -260,5 +417,8 @@ def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_UNLINK_ITEM,
         SERVICE_CREATE_AND_LINK_ITEM,
         SERVICE_SEARCH,
+        SERVICE_LIST_MAINTENANCE_TASKS,
+        SERVICE_CREATE_MAINTENANCE_TASK,
+        SERVICE_COMPLETE_MAINTENANCE_TASK,
     ):
         hass.services.async_remove(DOMAIN, service)

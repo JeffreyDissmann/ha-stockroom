@@ -23,6 +23,8 @@ URL_SEARCH = re.compile(r".*/api/v1/search(\?.*)?$")
 URL_ROOMS = re.compile(r".*/api/v1/rooms(\?.*)?$")
 URL_HA_LINKS = re.compile(r".*/api/v1/home-assistant-links(\?.*)?$")
 URL_HA_LINK = re.compile(r".*/api/v1/items/\d+/home-assistant-link$")
+URL_MAINTENANCE_TASKS = re.compile(r".*/api/v1/items/\d+/maintenance-tasks$")
+URL_MAINTENANCE_COMPLETE = re.compile(r".*/api/v1/maintenance-tasks/\d+/complete$")
 
 USER_PAYLOAD = {"id": 1, "name": "Jeff", "email": "jeff@example.com"}
 
@@ -32,6 +34,7 @@ STATISTICS_PAYLOAD = {
     "by_type": {"room": 5, "container": 12, "item": 103},
     "by_tag": [],
     "by_room": [],
+    "maintenance": {"overdue": 2, "due_soon": 1},
 }
 
 ITEM_42_PAYLOAD = {
@@ -66,6 +69,27 @@ SEARCH_PAYLOAD = {
         }
     ]
 }
+
+MAINTENANCE_TASK = {
+    "id": 7,
+    "item_id": 42,
+    "title": "Descale",
+    "description": None,
+    "schedule_type": "interval",
+    "interval_value": 3,
+    "interval_unit": "months",
+    "next_due_at": "2026-09-01",
+    "last_completed_at": "2026-06-01",
+    "reminder_lead_days": 7,
+    "is_active": True,
+    "due_in_days": -4,
+    "is_overdue": True,
+    "needs_attention": True,
+    "created_at": "2026-01-01T10:00:00+00:00",
+    "updated_at": "2026-06-01T10:00:00+00:00",
+}
+MAINTENANCE_TASKS_PAYLOAD = {"data": [MAINTENANCE_TASK]}
+MAINTENANCE_TASK_PAYLOAD = {"data": MAINTENANCE_TASK}
 
 ROOMS_PAYLOAD = {
     "data": [

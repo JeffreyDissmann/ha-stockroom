@@ -14,6 +14,10 @@ class StockroomStatistics:
     rooms: int
     containers: int
     items: int
+    # Household-wide maintenance counters. Default to 0 so a Stockroom server
+    # without the maintenance API still parses cleanly.
+    maintenance_overdue: int = 0
+    maintenance_due_soon: int = 0
 
 
 @dataclass(slots=True, frozen=True)

@@ -9,7 +9,7 @@ A custom Home Assistant integration for [Stockroom](https://github.com/JeffreyDi
 
 - **UI config flow** (`host`, API `token`, name) validated against `GET /api/v1/user`, with a **re-authentication** flow for rotating an expired/revoked token
 - **Configurable polling interval** (default 5 minutes) via the integration options
-- **Statistics sensors**: `stockroom_total_items`, `stockroom_total_value`, `stockroom_rooms`, `stockroom_containers`, `stockroom_items`
+- **Statistics sensors**: `stockroom_total_items`, `stockroom_total_value`, `stockroom_rooms`, `stockroom_containers`, `stockroom_items`, plus **maintenance counters** `stockroom_maintenance_overdue` and `stockroom_maintenance_due_soon`
 - **Device ↔ item linking** (Home Assistant device ↔ Stockroom item, strictly 1:1 and idempotent), driven entirely from the UI:
   - **Link to an existing item** — find it by **search**, by **browsing rooms**, or by **item ID** (scales to large inventories; already-linked items are filtered out)
   - **Create & link a new item** from a device, with manufacturer / model / serial **pre-filled from the Home Assistant device**
@@ -18,6 +18,7 @@ A custom Home Assistant integration for [Stockroom](https://github.com/JeffreyDi
 - **Area ↔ room mapping** — map a Home Assistant area to a Stockroom room so new items are **auto-placed** under the right room (your inventory tree follows your HA areas)
 - **Per-linked-device diagnostic sensor** exposing the linked Stockroom item ID, name, location path, and URL
 - **Auto-cleanup** of the Stockroom link when the linked Home Assistant device is removed
+- **Maintenance** — household overdue / due-soon counter sensors, plus service actions to **list**, **create**, and **complete** maintenance tasks on Stockroom items
 - **Service actions** for link / unlink / create-and-link / search, for use in automations
 - **English and German** translations, and a bundled **brand icon** (shown on Home Assistant 2026.3.0+)
 
@@ -67,6 +68,9 @@ The same operations are available as service actions under the `stockroom` domai
 | `stockroom.unlink_item` | Removes the link for the device behind an entity (`DELETE /items/{id}/home-assistant-link`). |
 | `stockroom.create_and_link_item` | Creates a new Stockroom item for an unmatched device (`POST /items`) and links it. |
 | `stockroom.search` | Searches Stockroom (`GET /search?q=`) and returns the top hits with their location path. Use `response_variable` to read the results. |
+| `stockroom.list_maintenance_tasks` | Lists the maintenance schedules on an item (`GET /items/{id}/maintenance-tasks`). Target by a linked `device_id` or a raw `item_id`. Use `response_variable` to read the tasks. |
+| `stockroom.create_maintenance_task` | Creates a maintenance reminder on an item (`POST /items/{id}/maintenance-tasks`) — an `interval` schedule or a `one_off` due date. Target by a linked `device_id` or a raw `item_id`. |
+| `stockroom.complete_maintenance_task` | Marks a task done by `task_id` (`POST /maintenance-tasks/{id}/complete`), recording a history entry (optional `completed_at`, `notes`, `cost`) and rolling the schedule forward. |
 
 Example — link the device behind an entity to Stockroom item `42`:
 
@@ -85,6 +89,18 @@ action: stockroom.search
 data:
   query: drill
 response_variable: hits
+```
+
+Example — remind me to descale the coffee machine every 3 months (item targeted by its Stockroom item ID; in the UI you can instead pick the linked device):
+
+```yaml
+action: stockroom.create_maintenance_task
+data:
+  item_id: 42
+  title: Descale
+  schedule_type: interval
+  interval_value: 3
+  interval_unit: months
 ```
 
 > **Note on the linked-item URL.** The per-linked-device sensor's `url` attribute (and the device's configuration link) is built as `{host}/items/{id}`. If your Stockroom web UI uses a different item path, open an issue and it can be adjusted.
