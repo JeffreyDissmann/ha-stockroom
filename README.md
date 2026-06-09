@@ -105,6 +105,14 @@ data:
 
 > **Note on the linked-item URL.** The per-linked-device sensor's `url` attribute (and the device's configuration link) is built as `{host}/items/{id}`. If your Stockroom web UI uses a different item path, open an issue and it can be adjusted.
 
+## Blueprints
+
+A ready-made automation blueprint ships in this repo — **Stockroom – maintenance flag to task**. It mirrors any Home Assistant "maintenance needed" signal into Stockroom: when a chosen entity stays out of its OK state for a hold time (default 5 minutes), it opens a one-off maintenance task on the linked Stockroom item; when the entity stays back in its OK state, it marks that task complete. Tasks are de-duplicated by title, so a flapping sensor won't pile them up.
+
+[![Open your Home Assistant instance and show the blueprint import dialog.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FJeffreyDissmann%2Fha-stockroom%2Fmain%2Fblueprints%2Fautomation%2Fstockroom%2Fmaintenance_flag.yaml)
+
+Works with anything that signals a problem — a `problem` binary sensor (OK state `off`), an error sensor (OK state e.g. `ok`), etc. Pick the linked device as the target. (HACS can't distribute blueprints, so this uses Home Assistant's native blueprint import.)
+
 ## Troubleshooting
 
 - **"needs a Stockroom token with the write ability"** — your token is read-only (HTTP 403). Create a token with the write ability for linking and item creation.

@@ -1,0 +1,129 @@
+blueprint:
+  name: Stockroom – maintenance flag to task
+  description: >
+    Mirror a Home Assistant "maintenance needed" flag into Stockroom.
+
+
+    When the chosen entity stays out of its OK state for the hold time, a
+    one-off maintenance task is created on the linked Stockroom item
+    (de-duplicated by title, so a flapping sensor won't pile up tasks). When the
+    entity stays back in its OK state for the hold time, the matching open task
+    is marked complete.
+
+
+    Works with anything that signals a problem — a `problem` binary sensor
+    (OK state `off`), an error sensor (OK state e.g. `ok`), etc. The automation
+    reacts to held state changes; the "Run" button does nothing by design.
+  domain: automation
+  author: Jeffrey Dissmann
+  homeassistant:
+    min_version: "2024.12.0"
+  input:
+    flag_entity:
+      name: Maintenance flag entity
+      description: >
+        The entity that signals whether maintenance is needed. Any state other
+        than the OK state below is treated as "needs maintenance"
+        (unavailable/unknown are ignored).
+      selector:
+        entity: {}
+    ok_state:
+      name: OK state
+      description: >
+        The state that means "all good / no maintenance needed". Use `off` for a
+        problem binary sensor, or e.g. `ok` for an error sensor.
+      default: "off"
+      selector:
+        text: {}
+    hold_time:
+      name: Hold time
+      description: >
+        How long the flag must stay in its new state before acting — debounces
+        brief blips so they don't create or complete tasks.
+      default:
+        minutes: 5
+      selector:
+        duration: {}
+    stockroom_device:
+      name: Linked Stockroom device
+      description: >
+        The Home Assistant device linked to the Stockroom item that should carry
+        the maintenance task.
+      selector:
+        device:
+          filter:
+            - integration: stockroom
+    task_title:
+      name: Task title
+      description: >
+        Title of the maintenance task created in Stockroom. Used to find and
+        complete the task again — keep it unique per flag.
+      default: Maintenance required
+      selector:
+        text: {}
+
+mode: single
+max_exceeded: silent
+
+# Only task_title is referenced inside templates; the device and title are
+# passed to the services directly via !input, so they work regardless of
+# variable scope.
+variables:
+  task_title: !input task_title
+
+triggers:
+  # Held back in the OK state → the problem cleared.
+  - trigger: state
+    entity_id: !input flag_entity
+    to: !input ok_state
+    for: !input hold_time
+    id: recovered
+  # Held in any real non-OK state → maintenance is needed.
+  - trigger: state
+    entity_id: !input flag_entity
+    not_to:
+      - !input ok_state
+      - unavailable
+      - unknown
+    for: !input hold_time
+    id: needs_maintenance
+
+actions:
+  - choose:
+      # Recovered → complete any open task with this title.
+      - conditions:
+          - condition: trigger
+            id: recovered
+        sequence:
+          - action: stockroom.list_maintenance_tasks
+            data:
+              device_id: !input stockroom_device
+            response_variable: sr_result
+          - repeat:
+              for_each: >
+                {{ sr_result.tasks | selectattr('is_active')
+                   | selectattr('title', 'eq', task_title) | list }}
+              sequence:
+                - action: stockroom.complete_maintenance_task
+                  data:
+                    task_id: "{{ repeat.item.id }}"
+      # Needs maintenance → create a one-off task due today, unless one with
+      # this title is already open.
+      - conditions:
+          - condition: trigger
+            id: needs_maintenance
+        sequence:
+          - action: stockroom.list_maintenance_tasks
+            data:
+              device_id: !input stockroom_device
+            response_variable: sr_result
+          - condition: template
+            value_template: >
+              {{ sr_result.tasks | selectattr('is_active')
+                 | selectattr('title', 'eq', task_title) | list | count == 0 }}
+          - action: stockroom.create_maintenance_task
+            data:
+              device_id: !input stockroom_device
+              title: !input task_title
+              schedule_type: one_off
+              next_due_at: "{{ now().strftime('%Y-%m-%d') }}"

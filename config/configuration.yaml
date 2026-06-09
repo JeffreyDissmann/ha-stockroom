@@ -1,6 +1,9 @@
 # https://www.home-assistant.io/integrations/default_config/
 default_config:
 
+# UI-managed automations (the automation editor writes this file).
+automation: !include automations.yaml
+
 # https://www.home-assistant.io/integrations/homeassistant/
 homeassistant:
   debug: true
