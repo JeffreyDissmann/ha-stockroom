@@ -12,13 +12,14 @@ A custom Home Assistant integration for [Stockroom](https://github.com/JeffreyDi
 - **Statistics sensors**: `stockroom_total_items`, `stockroom_total_value`, `stockroom_rooms`, `stockroom_containers`, `stockroom_items`, plus **maintenance counters** `stockroom_maintenance_overdue` and `stockroom_maintenance_due_soon`
 - **Device ↔ item linking** (Home Assistant device ↔ Stockroom item, strictly 1:1 and idempotent), driven entirely from the UI:
   - **Link to an existing item** — find it by **search**, by **browsing rooms**, or by **item ID** (scales to large inventories; already-linked items are filtered out)
-  - **Create & link a new item** from a device, with manufacturer / model / serial **pre-filled from the Home Assistant device**
+  - **Create & link a new item** from a device, with manufacturer / model / serial **pre-filled from the Home Assistant device** (plus battery type from Battery Notes when available)
   - **Bulk create** items for all unlinked devices in an area
   - **Unlink** a device, with a safety prompt before replacing a link owned by another Home Assistant instance
 - **Area ↔ room mapping** — map a Home Assistant area to a Stockroom room so new items are **auto-placed** under the right room (your inventory tree follows your HA areas)
 - **Per-linked-device diagnostic sensor** exposing the linked Stockroom item ID, name, location path, and URL
 - **Auto-cleanup** of the Stockroom link when the linked Home Assistant device is removed
 - **Maintenance** — household overdue / due-soon counter sensors, plus service actions to **list**, **create**, and **complete** maintenance tasks on Stockroom items
+- **Battery sync** — pushes each linked item's battery level to Stockroom (on change and once a day), and mirrors the battery **type** from the [Battery Notes](https://github.com/andrew-codechimp/HA-Battery-Notes) integration when it's installed
 - **Service actions** for link / unlink / create-and-link / search, for use in automations
 - **English and German** translations, and a bundled **brand icon** (shown on Home Assistant 2026.3.0+)
 
@@ -28,7 +29,8 @@ A custom Home Assistant integration for [Stockroom](https://github.com/JeffreyDi
 - A reachable Stockroom instance
 - A Stockroom **API token**:
   - **read** ability for the statistics sensors
-  - **write** ability is additionally required for any linking / item creation
+  - **write** ability is additionally required for any linking / item creation / battery syncing
+- *(Optional)* the [Battery Notes](https://github.com/andrew-codechimp/HA-Battery-Notes) integration, for syncing battery **type** (Home Assistant core doesn't expose battery chemistry)
 
 ## Installation (HACS)
 
@@ -104,6 +106,16 @@ data:
 ```
 
 > **Note on the linked-item URL.** The per-linked-device sensor's `url` attribute (and the device's configuration link) is built as `{host}/items/{id}`. If your Stockroom web UI uses a different item path, open an issue and it can be adjusted.
+
+## Battery sync
+
+If a linked item's Home Assistant device (or entity) has a battery, the integration keeps Stockroom's battery tracking up to date — Stockroom owns all forecasting; this only pushes raw readings.
+
+- **Level** — pushed on every change of the battery entity, and once a day as a heartbeat (so Stockroom always has a recent anchor). Levels are rounded to whole percents; Stockroom de-duplicates repeats.
+- **Type** — read from the [Battery Notes](https://github.com/andrew-codechimp/HA-Battery-Notes) integration (`battery_type` / `battery_quantity`) and written to the item as e.g. `AA ×4`, at link time and whenever it changes. Without Battery Notes, the type is left untouched (set it in Stockroom).
+- **Replacements** — a Battery Notes "battery replaced" event records a battery change in Stockroom.
+
+This runs automatically for items **already linked** to Stockroom; it never auto-links new entities. The battery entity is found from the linked device's `device_class: battery` sensor, or a `battery_level` attribute on the linked entity. A token with the **write** ability is required; with a read-only token, battery data simply isn't pushed (logged once).
 
 ## Blueprints
 
