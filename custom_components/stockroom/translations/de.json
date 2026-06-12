@@ -133,13 +133,15 @@
           "manufacturer": "Hersteller",
           "model_number": "Modellnummer",
           "serial_number": "Seriennummer",
+          "battery_type": "Batterietyp",
           "description": "Beschreibung",
           "parent_id": "Übergeordnet (Raum oder Behälter)"
         },
         "data_description": {
           "manufacturer": "Aus dem Hersteller des Geräts vorausgefüllt.",
           "model_number": "Aus dem Modell des Geräts vorausgefüllt.",
-          "serial_number": "Aus der Seriennummer des Geräts vorausgefüllt, sofern Home Assistant sie kennt."
+          "serial_number": "Aus der Seriennummer des Geräts vorausgefüllt, sofern Home Assistant sie kennt.",
+          "battery_type": "Aus der Integration Battery Notes vorausgefüllt, sofern sie die Batterie des Geräts kennt, z. B. \"AA ×4\"."
         }
       },
       "unlink_device": {

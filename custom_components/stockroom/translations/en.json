@@ -133,13 +133,15 @@
           "manufacturer": "Manufacturer",
           "model_number": "Model number",
           "serial_number": "Serial number",
+          "battery_type": "Battery type",
           "description": "Description",
           "parent_id": "Parent (room or container)"
         },
         "data_description": {
           "manufacturer": "Pre-filled from the device's manufacturer.",
           "model_number": "Pre-filled from the device's model.",
-          "serial_number": "Pre-filled from the device's serial number when Home Assistant knows it."
+          "serial_number": "Pre-filled from the device's serial number when Home Assistant knows it.",
+          "battery_type": "Pre-filled from the Battery Notes integration when it knows the device's battery, e.g. \"AA ×4\"."
         }
       },
       "unlink_device": {

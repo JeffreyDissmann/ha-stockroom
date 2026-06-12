@@ -271,6 +271,7 @@ async def test_link_item_linked_elsewhere_requires_confirm(hass: HomeAssistant) 
         mocked.get(URL_ITEM, payload=ITEM_42_LINKED_ELSEWHERE, repeat=True)
         mocked.put(URL_HA_LINK, status=200, payload=LINK_RESPONSE, repeat=True)
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         entry = MockConfigEntry(
             domain=DOMAIN, data=MOCK_CONFIG, unique_id=MOCK_HOST, options={}
         )
@@ -304,6 +305,7 @@ async def test_link_item_linked_elsewhere_declined(hass: HomeAssistant) -> None:
     with aioresponses() as mocked:
         mocked.get(URL_ITEM, payload=ITEM_42_LINKED_ELSEWHERE, repeat=True)
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         entry = MockConfigEntry(
             domain=DOMAIN, data=MOCK_CONFIG, unique_id=MOCK_HOST, options={}
         )
@@ -421,6 +423,57 @@ async def test_create_and_link_prefills_device_details(hass: HomeAssistant) -> N
     assert body["manufacturer"] == "Acme"
     assert body["model_number"] == "X-1000"
     assert body["serial_number"] == "SN-42"
+    # No Battery Notes on this device → battery type is not set.
+    assert body.get("battery_type") is None
+
+
+async def test_create_and_link_prefills_battery_type(hass: HomeAssistant) -> None:
+    """Create-item pre-fills and PATCHes battery_type from Battery Notes."""
+    device_id = _make_device(hass)
+    bn_source = MockConfigEntry(domain="battery_notes", data={})
+    bn_source.add_to_hass(hass)
+    note = er.async_get(hass).async_get_or_create(
+        "sensor",
+        "battery_notes",
+        "bn-type",
+        device_id=device_id,
+        config_entry=bn_source,
+    )
+    hass.states.async_set(
+        note.entity_id, "4x AA", {"battery_type": "AA", "battery_quantity": 4}
+    )
+    created = {"data": {"id": 91, "name": "Test Device", "type": {"value": "item"}}}
+    with aioresponses() as mocked:
+        mocked.get(
+            URL_ITEMS, payload={"data": [], "meta": {"last_page": 1}}, repeat=True
+        )
+        mocked.post(URL_ITEMS, status=201, payload=created, repeat=True)
+        mocked.patch(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
+        mocked.put(URL_HA_LINK, status=201, payload=LINK_RESPONSE, repeat=True)
+        entry = await _setup(hass, mocked)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "create_and_link"}
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"device_id": device_id}
+        )
+        # Submit without touching battery_type — the Battery Notes default applies.
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"name": "Test Device", "type": "item"}
+        )
+        await hass.async_block_till_done()
+
+        patches = [
+            req.kwargs["json"]
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "PATCH"
+        ]
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert {"battery_type": "AA ×4"} in patches
 
 
 async def test_unlink_via_wizard(hass: HomeAssistant) -> None:

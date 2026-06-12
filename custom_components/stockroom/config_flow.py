@@ -33,7 +33,9 @@ from .api import (
     StockroomPermissionError,
     normalize_stockroom_host,
 )
+from .battery import battery_notes_type_for_device
 from .const import (
+    ATTR_BATTERY_TYPE,
     ATTR_DESCRIPTION,
     ATTR_ITEM_ID,
     ATTR_MANUFACTURER,
@@ -518,8 +520,12 @@ class StockroomOptionsFlow(OptionsFlow):
                     payload[field] = value
             if user_input.get(ATTR_PARENT_ID):
                 payload["parent_id"] = int(user_input[ATTR_PARENT_ID])
+            battery_type = (user_input.get(ATTR_BATTERY_TYPE) or "").strip()
             error = await self._async_create_and_link(
-                device_id, payload, user_input[ATTR_NAME]
+                device_id,
+                payload,
+                user_input[ATTR_NAME],
+                battery_type=battery_type or None,
             )
             if error is None:
                 return self.async_create_entry(
@@ -534,6 +540,7 @@ class StockroomOptionsFlow(OptionsFlow):
             parent_options = []
 
         details = self._device_details(device_id)
+        battery_type_default = battery_notes_type_for_device(self.hass, device_id) or ""
         schema_dict: dict[Any, Any] = {
             vol.Required(ATTR_NAME, default=self._device_name(device_id)): str,
             vol.Required(ATTR_TYPE, default=DEFAULT_ITEM_TYPE): selector.SelectSelector(
@@ -555,6 +562,7 @@ class StockroomOptionsFlow(OptionsFlow):
             vol.Optional(
                 ATTR_SERIAL_NUMBER, default=details.get(ATTR_SERIAL_NUMBER, "")
             ): str,
+            vol.Optional(ATTR_BATTERY_TYPE, default=battery_type_default): str,
             vol.Optional(ATTR_DESCRIPTION, default=""): selector.TextSelector(
                 selector.TextSelectorConfig(multiline=True)
             ),
@@ -979,7 +987,11 @@ class StockroomOptionsFlow(OptionsFlow):
         return None
 
     async def _async_create_and_link(
-        self, device_id: str, payload: dict[str, Any], name: str
+        self,
+        device_id: str,
+        payload: dict[str, Any],
+        name: str,
+        battery_type: str | None = None,
     ) -> str | None:
         """Create a Stockroom item and link it, returning an error key on failure."""
         entity_id = primary_entity_id(self.hass, device_id)
@@ -1005,6 +1017,19 @@ class StockroomOptionsFlow(OptionsFlow):
             return "token_read_only"
         except StockroomApiError:
             return "create_failed"
+
+        # Battery type is a separate PATCH (not a create field) and best-effort:
+        # the item is already created/linked, and the battery sync would set it
+        # from Battery Notes anyway, so a failure here must not fail the flow.
+        if battery_type is not None:
+            try:
+                await self._api.async_set_battery_type(item_id, battery_type)
+            except StockroomApiError as err:
+                _LOGGER.warning(
+                    "Created Stockroom item %s but could not set its battery type: %s",
+                    item_id,
+                    err,
+                )
         return None
 
     async def _async_bulk_create(
