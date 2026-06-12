@@ -72,3 +72,21 @@ CONF_REPLACE = "replace"
 
 ITEM_TYPES = ("room", "container", "item")
 DEFAULT_ITEM_TYPE = "item"
+
+# Battery sync. Push battery levels of linked items up to Stockroom on change
+# and at least once a day (heartbeat), and mirror the battery type from the
+# Battery Notes integration when it is installed.
+BATTERY_HEARTBEAT_HOURS = 24
+
+# Battery Notes (https://codechimp.org/HA-Battery-Notes) is the de-facto source
+# of battery chemistry/quantity in Home Assistant. Optional soft dependency:
+# read its per-device attributes/events when present, otherwise leave the type
+# alone. See manifest `after_dependencies`.
+BATTERY_NOTES_DOMAIN = "battery_notes"
+EVENT_BATTERY_NOTES_REPLACED = "battery_notes_battery_replaced"
+ATTR_BATTERY_TYPE = "battery_type"
+ATTR_BATTERY_QUANTITY = "battery_quantity"
+ATTR_BATTERY_TYPE_AND_QUANTITY = "battery_type_and_quantity"
+
+# HA attribute carrying a battery percentage on a non-battery-class entity.
+ATTR_BATTERY_LEVEL = "battery_level"

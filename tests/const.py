@@ -25,6 +25,9 @@ URL_HA_LINKS = re.compile(r".*/api/v1/home-assistant-links(\?.*)?$")
 URL_HA_LINK = re.compile(r".*/api/v1/items/\d+/home-assistant-link$")
 URL_MAINTENANCE_TASKS = re.compile(r".*/api/v1/items/\d+/maintenance-tasks$")
 URL_MAINTENANCE_COMPLETE = re.compile(r".*/api/v1/maintenance-tasks/\d+/complete$")
+URL_BATTERY = re.compile(r".*/api/v1/items/\d+/battery$")
+URL_BATTERY_READINGS = re.compile(r".*/api/v1/items/\d+/battery-readings$")
+URL_BATTERY_CHANGES = re.compile(r".*/api/v1/items/\d+/battery-changes$")
 
 USER_PAYLOAD = {"id": 1, "name": "Jeff", "email": "jeff@example.com"}
 
@@ -90,6 +93,16 @@ MAINTENANCE_TASK = {
 }
 MAINTENANCE_TASKS_PAYLOAD = {"data": [MAINTENANCE_TASK]}
 MAINTENANCE_TASK_PAYLOAD = {"data": MAINTENANCE_TASK}
+
+BATTERY_PAYLOAD = {
+    "data": {
+        "tracked": True,
+        "battery_type": "CR2032",
+        "current_percent": 60,
+        "last_reading_at": "2026-06-10T08:00:00+00:00",
+        "is_low": False,
+    }
+}
 
 ROOMS_PAYLOAD = {
     "data": [

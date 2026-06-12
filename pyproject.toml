@@ -21,6 +21,10 @@ ignore = [
   "PLR0915",
 ]
 
+# The multiplication sign is intentional in battery types (e.g. "AA ×4"),
+# matching Stockroom's convention.
+allowed-confusables = ["×"]
+
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
 combine-as-imports = true

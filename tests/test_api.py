@@ -17,12 +17,16 @@ from custom_components.stockroom.api import (
 )
 
 from .const import (
+    BATTERY_PAYLOAD,
     ITEM_42_PAYLOAD,
     MAINTENANCE_TASK_PAYLOAD,
     MAINTENANCE_TASKS_PAYLOAD,
     MOCK_HOST,
     MOCK_TOKEN,
     STATISTICS_PAYLOAD,
+    URL_BATTERY,
+    URL_BATTERY_CHANGES,
+    URL_BATTERY_READINGS,
     URL_HA_LINK,
     URL_HA_LINKS,
     URL_ITEM,
@@ -118,6 +122,63 @@ async def test_complete_maintenance_task(session: aiohttp.ClientSession) -> None
         assert task["id"] == 7
         request = next(iter(mocked.requests.values()))[0]
         assert request.kwargs["json"] == {"cost": 4.5}
+
+
+async def test_post_battery_reading(session: aiohttp.ClientSession) -> None:
+    """async_post_battery_reading sends percent (+ optional recorded_at)."""
+    with aioresponses() as mocked:
+        mocked.post(URL_BATTERY_READINGS, status=201, payload=BATTERY_PAYLOAD)
+        result = await _client(session).async_post_battery_reading(
+            42, 58, "2026-06-11T18:00:00+00:00"
+        )
+
+        assert result["current_percent"] == 60
+        request = next(iter(mocked.requests.values()))[0]
+        assert request.kwargs["json"] == {
+            "percent": 58,
+            "recorded_at": "2026-06-11T18:00:00+00:00",
+        }
+
+
+async def test_post_battery_reading_omits_recorded_at(
+    session: aiohttp.ClientSession,
+) -> None:
+    """recorded_at is left out of the body when not provided."""
+    with aioresponses() as mocked:
+        mocked.post(URL_BATTERY_READINGS, status=201, payload=BATTERY_PAYLOAD)
+        await _client(session).async_post_battery_reading(42, 58)
+
+        request = next(iter(mocked.requests.values()))[0]
+        assert request.kwargs["json"] == {"percent": 58}
+
+
+async def test_post_battery_change(session: aiohttp.ClientSession) -> None:
+    """async_post_battery_change posts notes to the battery-changes endpoint."""
+    with aioresponses() as mocked:
+        mocked.post(URL_BATTERY_CHANGES, status=201, payload={"data": {}})
+        await _client(session).async_post_battery_change(42, notes="Fresh CR2032.")
+
+        request = next(iter(mocked.requests.values()))[0]
+        assert request.kwargs["json"] == {"notes": "Fresh CR2032."}
+
+
+async def test_set_battery_type(session: aiohttp.ClientSession) -> None:
+    """async_set_battery_type PATCHes the item with the battery_type."""
+    with aioresponses() as mocked:
+        mocked.patch(URL_ITEM, payload=ITEM_42_PAYLOAD)
+        await _client(session).async_set_battery_type(42, "AA ×4")
+
+        request = next(iter(mocked.requests.values()))[0]
+        assert request.kwargs["json"] == {"battery_type": "AA ×4"}
+
+
+async def test_get_item_battery(session: aiohttp.ClientSession) -> None:
+    """async_get_item_battery unwraps the battery data object."""
+    with aioresponses() as mocked:
+        mocked.get(URL_BATTERY, payload=BATTERY_PAYLOAD)
+        battery = await _client(session).async_get_item_battery(42)
+
+    assert battery["battery_type"] == "CR2032"
 
 
 async def test_401_raises_authentication_error(

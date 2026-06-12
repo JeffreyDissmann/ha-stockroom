@@ -86,6 +86,7 @@ async def test_link_item_service(hass: HomeAssistant) -> None:
     device_id, entity_id = _make_linked_device(hass)
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.get(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
         mocked.put(URL_HA_LINK, status=201, payload=LINK_RESPONSE, repeat=True)
         entry = await _setup_entry(hass)
@@ -120,6 +121,7 @@ async def test_link_item_read_only_token(hass: HomeAssistant) -> None:
     _, entity_id = _make_linked_device(hass)
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.put(
             URL_HA_LINK,
             status=403,
@@ -149,6 +151,7 @@ async def test_unlink_item_service(hass: HomeAssistant) -> None:
     }
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.get(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
         mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.delete(URL_HA_LINK, status=204, repeat=True)
@@ -172,6 +175,7 @@ async def test_create_and_link_item_service(hass: HomeAssistant) -> None:
     created = {"data": {"id": 99, "name": "Test Device", "type": {"value": "item"}}}
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.get(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
         mocked.post(URL_ITEMS, status=201, payload=created, repeat=True)
         mocked.put(URL_HA_LINK, status=201, payload=LINK_RESPONSE, repeat=True)
@@ -201,6 +205,7 @@ async def test_search_service_returns_results(hass: HomeAssistant) -> None:
     """search returns the top hits as a service response."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.get(URL_SEARCH, payload=SEARCH_PAYLOAD, repeat=True)
         await _setup_entry(hass)
 
@@ -219,6 +224,7 @@ async def test_list_maintenance_tasks_by_item_id(hass: HomeAssistant) -> None:
     """list_maintenance_tasks accepts a raw item_id and returns the tasks."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.get(
             URL_MAINTENANCE_TASKS, payload=MAINTENANCE_TASKS_PAYLOAD, repeat=True
         )
@@ -247,6 +253,7 @@ async def test_list_maintenance_tasks_by_linked_device(hass: HomeAssistant) -> N
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
         mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.get(
             URL_MAINTENANCE_TASKS, payload=MAINTENANCE_TASKS_PAYLOAD, repeat=True
         )
@@ -270,6 +277,7 @@ async def test_list_maintenance_tasks_unlinked_device_errors(
     device_id, _ = _make_linked_device(hass)
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         await _setup_entry(hass)
 
         with pytest.raises(ServiceValidationError) as err:
@@ -287,6 +295,7 @@ async def test_create_maintenance_task_service(hass: HomeAssistant) -> None:
     """create_maintenance_task posts a built payload and returns the task."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.post(
             URL_MAINTENANCE_TASKS,
             status=201,
@@ -330,6 +339,7 @@ async def test_create_maintenance_task_one_off_serializes_date(
     """A one-off task serializes next_due_at as an ISO date string."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.post(
             URL_MAINTENANCE_TASKS,
             status=201,
@@ -363,6 +373,7 @@ async def test_complete_maintenance_task_service(hass: HomeAssistant) -> None:
     """complete_maintenance_task posts to the complete endpoint by task id."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         mocked.post(
             URL_MAINTENANCE_COMPLETE, payload=MAINTENANCE_TASK_PAYLOAD, repeat=True
         )

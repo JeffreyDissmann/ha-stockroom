@@ -11,6 +11,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import StockroomApiClient, StockroomApiError
+from .battery import StockroomBatterySync
 from .const import (
     CONF_HA_DEVICE_TO_ITEM,
     CONF_ITEM_TO_HA_DEVICE,
@@ -116,6 +117,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
     )
 
     async_setup_services(hass)
+
+    battery_sync = StockroomBatterySync(hass, entry, api, coordinator)
+    battery_sync.async_setup()
+    entry.async_on_unload(battery_sync.async_shutdown)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     entry.runtime_data = coordinator

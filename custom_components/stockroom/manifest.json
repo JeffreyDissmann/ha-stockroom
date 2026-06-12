@@ -1,6 +1,7 @@
 {
   "domain": "stockroom",
   "name": "Stockroom",
+  "after_dependencies": ["battery_notes"],
   "codeowners": ["@JeffreyDissmann"],
   "config_flow": true,
   "documentation": "https://github.com/JeffreyDissmann/ha-stockroom#readme",

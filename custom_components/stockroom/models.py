@@ -38,3 +38,19 @@ class LinkedItem:
     location_path: str
     quantity: int
     url: str
+
+
+@dataclass(slots=True, frozen=True)
+class BatteryLinkTarget:
+    """A Stockroom item linked to HA, as a candidate for battery syncing.
+
+    Built from ``GET /home-assistant-links`` (the server's view of the link),
+    already filtered to this Home Assistant instance. ``battery_type`` is the
+    value Stockroom currently holds, used to avoid redundant PATCHes.
+    """
+
+    item_id: int
+    ha_device_id: str | None
+    ha_entity_id: str | None
+    instance_id: str | None
+    battery_type: str | None

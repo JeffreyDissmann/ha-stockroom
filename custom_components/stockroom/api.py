@@ -349,6 +349,17 @@ class StockroomApiClient:
             raise StockroomApiError("Stockroom maintenance tasks response is invalid")
         return [task for task in data["data"] if isinstance(task, dict)]
 
+    async def async_get_item_battery(self, item_id: int) -> dict[str, Any]:
+        """Return an item's battery state (``GET /items/{id}/battery``)."""
+        data = await self._async_request(
+            "GET",
+            f"items/{item_id}/battery",
+            error_context="battery request",
+        )
+        if not isinstance(data, dict) or not isinstance(data.get("data"), dict):
+            raise StockroomApiError("Stockroom battery response is invalid")
+        return data["data"]
+
     async def async_search(self, query: str) -> list[dict[str, Any]]:
         """Search for items (``GET /search?q=``)."""
         data = await self._async_request(
@@ -425,6 +436,52 @@ class StockroomApiClient:
                 "Stockroom complete maintenance task response is invalid"
             )
         return data["data"]
+
+    async def async_post_battery_reading(
+        self, item_id: int, percent: int, recorded_at: str | None = None
+    ) -> dict[str, Any]:
+        """Push a battery level reading (``POST /items/{id}/battery-readings``).
+
+        ``percent`` is an integer 0-100. ``recorded_at`` is an optional ISO-8601
+        timestamp; Stockroom defaults to now when omitted.
+        """
+        payload: dict[str, Any] = {"percent": percent}
+        if recorded_at is not None:
+            payload["recorded_at"] = recorded_at
+        data = await self._async_request(
+            "POST",
+            f"items/{item_id}/battery-readings",
+            error_context="battery reading",
+            payload=payload,
+        )
+        if not isinstance(data, dict) or not isinstance(data.get("data"), dict):
+            raise StockroomApiError("Stockroom battery reading response is invalid")
+        return data["data"]
+
+    async def async_post_battery_change(
+        self,
+        item_id: int,
+        changed_at: str | None = None,
+        notes: str | None = None,
+    ) -> None:
+        """Record an explicit battery change (``POST /items/{id}/battery-changes``)."""
+        payload: dict[str, Any] = {}
+        if changed_at is not None:
+            payload["changed_at"] = changed_at
+        if notes is not None:
+            payload["notes"] = notes
+        await self._async_request(
+            "POST",
+            f"items/{item_id}/battery-changes",
+            error_context="battery change",
+            payload=payload,
+        )
+
+    async def async_set_battery_type(
+        self, item_id: int, battery_type: str
+    ) -> dict[str, Any]:
+        """Set an item's battery type (``PATCH /items/{id}``)."""
+        return await self.async_update_item(item_id, {"battery_type": battery_type})
 
     async def async_set_item_ha_link(
         self,

@@ -10,7 +10,15 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.stockroom.const import DOMAIN
 
-from .const import MOCK_CONFIG, MOCK_HOST, STATISTICS_PAYLOAD, URL_STATISTICS
+from .const import (
+    MOCK_CONFIG,
+    MOCK_HOST,
+    STATISTICS_PAYLOAD,
+    URL_HA_LINKS,
+    URL_STATISTICS,
+)
+
+_EMPTY_HA_LINKS = {"data": [], "meta": {"current_page": 1, "last_page": 1}}
 
 
 async def _setup(hass: HomeAssistant, mocked: aioresponses) -> MockConfigEntry:
@@ -25,6 +33,7 @@ async def test_setup_creates_statistics_sensors(hass: HomeAssistant) -> None:
     """Setup loads the entry and creates the statistics sensors."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         entry = await _setup(hass, mocked)
 
     assert entry.state is ConfigEntryState.LOADED
@@ -39,6 +48,7 @@ async def test_statistics_sensor_attributes(hass: HomeAssistant) -> None:
     """The total value sensor reports its measurement state class and unit."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         await _setup(hass, mocked)
 
     state = hass.states.get("sensor.stockroom_total_items")
@@ -100,6 +110,7 @@ async def test_unload_entry(hass: HomeAssistant) -> None:
     """Unloading the entry tears it down cleanly."""
     with aioresponses() as mocked:
         mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_EMPTY_HA_LINKS, repeat=True)
         entry = await _setup(hass, mocked)
 
     assert await hass.config_entries.async_unload(entry.entry_id)
