@@ -814,6 +814,9 @@ class StockroomOptionsFlow(OptionsFlow):
             or self._repair_adopt
             or self._repair_drop
         ):
+            # Links are already in sync, but still honour the explicit click by
+            # re-pushing battery level/type for the linked items.
+            await self._async_resync_batteries()
             return self.async_abort(reason="nothing_to_repair")
 
         schema_dict: dict[Any, Any] = {}
@@ -935,7 +938,16 @@ class StockroomOptionsFlow(OptionsFlow):
         for device_id in self._repair_drop:
             new_options = self._drop_device(new_options, device_id)
 
+        # Re-push battery level/type for the linked items as part of the repair.
+        await self._async_resync_batteries()
+
         return self.async_create_entry(title="", data=new_options)
+
+    async def _async_resync_batteries(self) -> None:
+        """Force the running battery sync to re-push level/type for linked items."""
+        battery_sync = getattr(self.config_entry.runtime_data, "battery_sync", None)
+        if battery_sync is not None:
+            await battery_sync.async_resync_now()
 
     def _drop_device(
         self, options: dict[str, Any], device_id: str, item_id: int | None = None

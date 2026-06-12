@@ -182,7 +182,7 @@
       },
       "repair": {
         "title": "Repair links",
-        "description": "Reconcile Home Assistant with Stockroom. {refresh_count} link(s) will be refreshed, {remove_count} stale link(s) (device removed) will be deleted, and {adopt_count} Stockroom link(s) point at devices Home Assistant isn't tracking. Choose which of those to adopt, then submit to apply.",
+        "description": "Reconcile Home Assistant with Stockroom. {refresh_count} link(s) will be refreshed, {remove_count} stale link(s) (device removed) will be deleted, and {adopt_count} Stockroom link(s) point at devices Home Assistant isn't tracking. Choose which of those to adopt, then submit to apply. Battery levels and types are re-synced for linked items, too.",
         "data": {
           "adopt": "Adopt these links"
         }
@@ -206,7 +206,7 @@
       "no_unlinked_ha_devices": "No unlinked devices are available in that area.",
       "missing_device": "No device was selected.",
       "missing_area": "No area was selected.",
-      "nothing_to_repair": "Everything is already in sync — nothing to repair.",
+      "nothing_to_repair": "Links are already in sync; battery levels and types were re-synced.",
       "item_not_found": "That Stockroom item was not found.",
       "link_conflict": "That device or item is already linked.",
       "token_read_only": "This needs a Stockroom token with the write ability, but the configured token is read-only.",

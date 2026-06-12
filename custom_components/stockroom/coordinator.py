@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -30,6 +30,9 @@ from .const import (
 )
 from .linking import get_link_maps
 from .models import BatteryLinkTarget, LinkedItem, StockroomStatistics
+
+if TYPE_CHECKING:
+    from .battery import StockroomBatterySync
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -75,6 +78,9 @@ class StockroomDataUpdateCoordinator(DataUpdateCoordinator[StockroomData]):
         )
         self.api = api
         self._instance_id: str | None = None
+        # Set by __init__.py after the manager is created; used by the repair
+        # flow to force a battery resync on demand.
+        self.battery_sync: StockroomBatterySync | None = None
 
     async def _async_update_data(self) -> StockroomData:
         """Fetch statistics and refresh linked-item / battery state."""

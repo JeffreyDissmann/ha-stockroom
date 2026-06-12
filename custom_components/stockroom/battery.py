@@ -167,6 +167,26 @@ class StockroomBatterySync:
             unsub()
         self._unsubs.clear()
 
+    async def async_resync_now(self) -> None:
+        """Force-push the current level and re-set the type for every target.
+
+        Used by the manual "Repair links" action: it pushes the current battery
+        level and re-applies the Battery Notes type for each linked item right
+        now, instead of waiting for the next change or the daily heartbeat.
+        """
+        data = self.coordinator.data
+        targets = list(data.battery_targets) if data is not None else []
+        # Drop the cache so a type that drifted on the Stockroom side is re-set.
+        self._type_cache.clear()
+        for target in targets:
+            source = self._resolve_source(target)
+            if source is not None:
+                state = self.hass.states.get(source.entity_id)
+                percent = self._percent_from_state(state, source.attribute)
+                if percent is not None:
+                    await self._async_push(target.item_id, percent)
+            await self._async_sync_battery_type(target)
+
     # -- Reconciliation --------------------------------------------------
 
     @callback

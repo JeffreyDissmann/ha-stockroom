@@ -22,11 +22,20 @@ from .const import (
     MOCK_CONFIG,
     MOCK_HOST,
     STATISTICS_PAYLOAD,
+    URL_BATTERY_READINGS,
     URL_HA_LINK,
     URL_HA_LINKS,
     URL_ITEM,
     URL_STATISTICS,
 )
+
+
+def _count_posts(mocked: aioresponses, fragment: str) -> int:
+    return sum(
+        len(reqs)
+        for (method, url), reqs in mocked.requests.items()
+        if method == "POST" and fragment in str(url)
+    )
 
 
 def _make_device(hass: HomeAssistant, ident: str, name: str = "Device") -> str:
@@ -149,6 +158,72 @@ async def test_repair_refresh_adopt_delete(hass: HomeAssistant) -> None:
     device_to_item, _ = get_link_maps(entry)
     assert device_to_item == {tracked: 10, untracked: 11}
     assert delete_made
+
+
+async def test_repair_resyncs_batteries(hass: HomeAssistant) -> None:
+    """Applying a repair re-pushes the battery level and re-sets the type."""
+    device_id = _make_device(hass, "bat", "Battery Device")
+    extra = MockConfigEntry(domain="demo", data={}, entry_id="src-bat-extra")
+    extra.add_to_hass(hass)
+    entity_registry = er.async_get(hass)
+    battery = entity_registry.async_get_or_create(
+        "sensor",
+        "demo",
+        "bat-pct",
+        device_id=device_id,
+        config_entry=extra,
+        original_device_class="battery",
+    )
+    hass.states.async_set(battery.entity_id, "80", {"device_class": "battery"})
+    note = entity_registry.async_get_or_create(
+        "sensor", "battery_notes", "bat-bn", device_id=device_id, config_entry=extra
+    )
+    hass.states.async_set(
+        note.entity_id, "4x AA", {"battery_type": "AA", "battery_quantity": 4}
+    )
+    ha_links = {
+        "data": [
+            {
+                "id": 42,
+                "name": "Battery item",
+                "battery_type": None,
+                "home_assistant_link": {
+                    "ha_device_id": device_id,
+                    "friendly_name": "B",
+                },
+            }
+        ],
+        "meta": {"last_page": 1},
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_HA_LINKS, payload=ha_links, repeat=True)
+        mocked.put(URL_HA_LINK, status=200, payload=LINK_RESPONSE, repeat=True)
+        mocked.post(URL_BATTERY_READINGS, status=201, payload={"data": {}}, repeat=True)
+        mocked.patch(URL_ITEM, payload=ITEM_42_PAYLOAD, repeat=True)
+        entry = await _setup(hass, mocked, options=_links(device_id, 42))
+
+        readings_before = _count_posts(mocked, "battery-readings")
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "repair"}
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {}
+        )
+        await hass.async_block_till_done()
+
+        readings_after = _count_posts(mocked, "battery-readings")
+        patches = [
+            req.kwargs["json"]
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "PATCH"
+        ]
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert readings_after > readings_before  # repair pushed a fresh reading
+    assert {"battery_type": "AA ×4"} in patches
 
 
 async def test_repair_nothing_to_do(hass: HomeAssistant) -> None:

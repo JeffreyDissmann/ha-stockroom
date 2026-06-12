@@ -119,6 +119,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
     async_setup_services(hass)
 
     battery_sync = StockroomBatterySync(hass, entry, api, coordinator)
+    coordinator.battery_sync = battery_sync
     battery_sync.async_setup()
     entry.async_on_unload(battery_sync.async_shutdown)
 
