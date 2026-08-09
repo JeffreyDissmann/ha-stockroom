@@ -139,7 +139,9 @@ class StockroomConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "unknown"
             else:
                 await self.async_set_unique_id(info["unique_id"])
-                self._abort_if_unique_id_configured()
+                # The entry carries an update listener that owns reloading, so the
+                # flow must not reload as well (a hard error from HA 2026.12).
+                self._abort_if_unique_id_configured(reload_on_update=False)
                 connected_as = info["user_name"]
                 return self.async_create_entry(
                     title=info["title"],
@@ -188,7 +190,10 @@ class StockroomConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                return self.async_update_reload_and_abort(reauth_entry, data=candidate)
+                # Not async_update_reload_and_abort: the entry's update listener
+                # already reloads on a data change, and combining the two is a
+                # hard error from HA 2026.12.
+                return self.async_update_and_abort(reauth_entry, data=candidate)
 
         return self.async_show_form(
             step_id="reauth_confirm",
