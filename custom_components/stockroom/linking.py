@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
@@ -15,12 +15,13 @@ from homeassistant.helpers import (
 )
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
-from .api import StockroomApiClient
+from .api import StockroomApiClient, StockroomApiError
 from .const import (
     CONF_AREA_LINKS,
     CONF_HA_DEVICE_TO_ITEM,
     CONF_ITEM_TO_HA_DEVICE,
     CONF_LINKS,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ def get_area_room_map(
         for area_id, room_id in raw.items():
             try:
                 area_room[str(area_id)] = int(room_id)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
     return area_room
 
@@ -73,7 +74,7 @@ def get_link_maps(
         for device_id, item_id in raw_device_to_item.items():
             try:
                 ha_device_to_item[str(device_id)] = int(item_id)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
 
     item_to_ha_device: dict[int, str] = {}
@@ -81,7 +82,7 @@ def get_link_maps(
         for item_id, device_id in raw_item_to_device.items():
             try:
                 item_to_ha_device[int(item_id)] = str(device_id)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
 
     return ha_device_to_item, item_to_ha_device
@@ -105,6 +106,56 @@ def build_updated_options(
             },
         },
     }
+
+
+@callback
+def resolve_device_ids(hass: HomeAssistant, device_id: str) -> list[str]:
+    """Return every live device id a stored device id stands for.
+
+    Home Assistant 2026.8 restricted a device to a single config entry and split
+    devices that belonged to several entries into one device per entry. The old
+    ("composite") id is only resolved by a read-only shim that is not part of the
+    registry, and the entities of the merged device were distributed over the
+    splits - so anything enumerating a stored device's entities has to look at all
+    of them. Returns ``[device_id]`` for a live device and ``[]`` for an unknown id.
+    """
+    registry = dr.async_get(hass)
+    is_composite = registry.async_is_composite_device_id(device_id)
+    if is_composite is False:
+        return [device_id]
+    if is_composite is None:
+        return []
+    return [
+        split.id
+        for split in registry.async_get_devices_for_composite_device_id(device_id)
+    ]
+
+
+@callback
+def resolve_device_id(hass: HomeAssistant, device_id: str) -> str | None:
+    """Map a stored device id onto the single device id to store and attach to.
+
+    For a pre-migration composite this is the split that inherited the composite's
+    former primary config entry - the device of the integration that actually owns
+    the hardware - matching how core itself picks the base for its shim. Returns
+    ``None`` for an unknown id. See :func:`resolve_device_ids` when enumerating
+    entities, which have to be collected from every split.
+    """
+    registry = dr.async_get(hass)
+    is_composite = registry.async_is_composite_device_id(device_id)
+    if is_composite is False:
+        return device_id
+    if is_composite is None:
+        return None
+
+    splits = registry.async_get_devices_for_composite_device_id(device_id)
+    if not splits:
+        return None
+    primary = splits[0].composite_primary_config_entry
+    for split in splits:
+        if split.config_entry_id == primary:
+            return split.id
+    return splits[0].id
 
 
 def get_ha_device_url(hass: HomeAssistant, ha_device_id: str) -> str:
@@ -233,9 +284,13 @@ def _clear_configuration_url_if_matching(
 def primary_entity_id(hass: HomeAssistant, device_id: str) -> str | None:
     """Return a representative entity id for a device, preferring a primary one."""
     registry = er.async_get(hass)
-    entries = er.async_entries_for_device(
-        registry, device_id, include_disabled_entities=True
-    )
+    entries = [
+        entry
+        for resolved_id in resolve_device_ids(hass, device_id)
+        for entry in er.async_entries_for_device(
+            registry, resolved_id, include_disabled_entities=True
+        )
+    ]
     if not entries:
         return None
     for entry in entries:
@@ -250,6 +305,125 @@ def device_friendly_name(hass: HomeAssistant, device_id: str) -> str:
     if device is None:
         return device_id
     return device.name_by_user or device.name or device_id
+
+
+def linked_item_unique_id(config_entry_id: str, ha_device_id: str) -> str:
+    """Return the unique id of the diagnostic sensor for a linked device."""
+    return f"{config_entry_id}_{ha_device_id}_linked_item"
+
+
+@callback
+def _migrate_linked_item_unique_ids(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    remapped: Mapping[str, str],
+) -> None:
+    """Carry the diagnostic sensors over to the re-pointed device ids.
+
+    The sensors' unique ids embed the linked device id, so without this the
+    re-pointed links would register a second set of entities and orphan the
+    originals instead of keeping their entity ids and history.
+    """
+    registry = er.async_get(hass)
+    for old_device_id, new_device_id in remapped.items():
+        old_unique_id = linked_item_unique_id(config_entry.entry_id, old_device_id)
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, old_unique_id)
+        if entity_id is None:
+            continue
+        new_unique_id = linked_item_unique_id(config_entry.entry_id, new_device_id)
+        if registry.async_get_entity_id("sensor", DOMAIN, new_unique_id) is not None:
+            # Already migrated (or a leftover); leave both alone rather than collide.
+            continue
+        registry.async_update_entity(entity_id, new_unique_id=new_unique_id)
+
+
+@callback
+def async_remove_orphaned_split_devices(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> None:
+    """Drop the empty device copies HA 2026.8's split handed this integration.
+
+    Before 2026.8 the diagnostic sensor joined the linked device by copying its
+    identifiers, which added this config entry to that device. The split therefore
+    gave us a copy of every linked device; now that the sensors attach to the
+    source device instead, ours are left behind empty and would show up as ghost
+    duplicates. Call this after the platforms are set up, so the sensors have been
+    re-attached and the leftovers really are empty.
+    """
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    for device in dr.async_entries_for_config_entry(
+        device_registry, config_entry.entry_id
+    ):
+        # Only devices this integration inherited from a split, never its own hub.
+        if device.composite_device_id is None:
+            continue
+        if er.async_entries_for_device(
+            entity_registry, device.id, include_disabled_entities=True
+        ):
+            continue
+        _LOGGER.debug("Removing device %s left over from the 2026.8 split", device.id)
+        device_registry.async_remove_device(device.id)
+
+
+async def async_migrate_split_device_links(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    api: StockroomApiClient,
+) -> dict[str, Any] | None:
+    """Re-point stored links onto the devices HA 2026.8 split them into.
+
+    Returns the updated options, or ``None`` when nothing needed re-pointing.
+    Unknown device ids are left untouched - the owning integration may simply not
+    have set its devices up yet, and a genuinely removed device is handled by the
+    device-registry remove listener.
+    """
+    ha_device_to_item, item_to_ha_device = get_link_maps(config_entry)
+    if not ha_device_to_item:
+        return None
+
+    remapped: dict[str, str] = {}
+    for device_id in ha_device_to_item:
+        resolved = resolve_device_id(hass, device_id)
+        if resolved is not None and resolved != device_id:
+            remapped[device_id] = resolved
+    if not remapped:
+        return None
+
+    new_device_to_item = {
+        remapped.get(device_id, device_id): item_id
+        for device_id, item_id in ha_device_to_item.items()
+    }
+    new_item_to_device = {
+        item_id: remapped.get(device_id, device_id)
+        for item_id, device_id in item_to_ha_device.items()
+    }
+
+    _LOGGER.info(
+        "Re-pointed %s Stockroom device link(s) onto the devices Home Assistant "
+        "2026.8 split them into",
+        len(remapped),
+    )
+
+    _migrate_linked_item_unique_ids(hass, config_entry, remapped)
+
+    # Push the new device ids (and their deep links) back to Stockroom. A failure
+    # here only leaves the server side stale; the "Repair links" action fixes it.
+    for device_id in remapped.values():
+        item_id = new_device_to_item.get(device_id)
+        if item_id is None:
+            continue
+        try:
+            await async_refresh_link(hass, config_entry, api, device_id, item_id)
+        except StockroomApiError as err:
+            _LOGGER.warning(
+                "Unable to update the Stockroom link for item %s after re-pointing "
+                "its Home Assistant device (%s); use the Repair links action to retry",
+                item_id,
+                err,
+            )
+
+    return build_updated_options(config_entry, new_device_to_item, new_item_to_device)
 
 
 async def async_refresh_link(

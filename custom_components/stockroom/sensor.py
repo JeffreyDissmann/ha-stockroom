@@ -11,17 +11,16 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.const import CONF_HOST, CONF_NAME, EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DEFAULT_NAME, DOMAIN
 from .coordinator import StockroomConfigEntry, StockroomDataUpdateCoordinator
-from .linking import get_link_maps
+from .linking import get_link_maps, linked_item_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -114,10 +113,9 @@ async def async_setup_entry(
     device_registry = dr.async_get(hass)
     ha_device_to_item, _ = get_link_maps(entry)
     for ha_device_id, item_id in ha_device_to_item.items():
+        # Links are re-pointed at setup, so a stored id resolves to a real device.
         linked_device = device_registry.async_get(ha_device_id)
-        # The sensor attaches to the linked device via its identifiers/connections;
-        # skip devices that have neither, which HA would reject.
-        if linked_device and (linked_device.identifiers or linked_device.connections):
+        if linked_device is not None:
             entities.append(
                 StockroomLinkedItemSensor(
                     coordinator,
@@ -197,15 +195,15 @@ class StockroomLinkedItemSensor(
         super().__init__(coordinator)
         self._ha_device_id = ha_device_id
         self._item_id = item_id
-        self._attr_unique_id = f"{config_entry_id}_{ha_device_id}_linked_item"
+        self._attr_unique_id = linked_item_unique_id(config_entry_id, ha_device_id)
         self._attr_native_value = item_id
 
-        device_info: DeviceInfo = DeviceInfo()
-        if linked_device.identifiers:
-            device_info["identifiers"] = set(linked_device.identifiers)
-        if linked_device.connections:
-            device_info["connections"] = set(linked_device.connections)
-        self._attr_device_info = device_info
+        # Since HA 2026.8 a device belongs to a single config entry, so copying
+        # the linked device's identifiers into DeviceInfo would fork a duplicate
+        # device instead of attaching. Link to the source device directly, which
+        # is the supported pattern for an integration adding an entity to
+        # another integration's device.
+        self.device_entry = linked_device
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

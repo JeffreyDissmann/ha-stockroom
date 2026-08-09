@@ -21,7 +21,9 @@ from .const import (
 from .coordinator import StockroomConfigEntry, StockroomDataUpdateCoordinator
 from .linking import (
     async_cleanup_removed_ha_device_link,
+    async_migrate_split_device_links,
     async_refresh_link,
+    async_remove_orphaned_split_devices,
     get_link_maps,
 )
 from .services import async_setup_services, async_unload_services
@@ -49,6 +51,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
         entry.data[CONF_TOKEN],
         async_get_clientsession(hass),
     )
+
+    # Home Assistant 2026.8 split devices that belonged to several config entries,
+    # which invalidates the device ids stored in the links.
+    migrated = await async_migrate_split_device_links(hass, entry, api)
+    if migrated is not None:
+        hass.config_entries.async_update_entry(entry, options=migrated)
+
     coordinator = StockroomDataUpdateCoordinator(hass, api, entry)
     await coordinator.async_config_entry_first_refresh()
 
@@ -126,6 +135,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: StockroomConfigEntry) ->
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Only once the sensors have been attached to the linked devices are the
+    # copies HA's 2026.8 device split left behind provably empty.
+    async_remove_orphaned_split_devices(hass, entry)
 
     return True
 

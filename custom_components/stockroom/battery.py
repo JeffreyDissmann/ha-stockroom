@@ -19,7 +19,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 from homeassistant.core import Event, HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
@@ -41,6 +41,7 @@ from .const import (
     EVENT_BATTERY_NOTES_REPLACED,
 )
 from .coordinator import StockroomConfigEntry, StockroomDataUpdateCoordinator
+from .linking import resolve_device_id, resolve_device_ids
 from .models import BatteryLinkTarget
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,7 +63,7 @@ def _is_numeric(value: object) -> bool:
     """Return True if value can be parsed as a float."""
     try:
         float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
     return True
 
@@ -82,6 +83,28 @@ def _format_battery_type(battery_type: str, quantity: object) -> str:
     return battery_type
 
 
+def _entity_entries_for_device(
+    hass: HomeAssistant,
+    registry: er.EntityRegistry,
+    device_id: str,
+    *,
+    include_disabled_entities: bool = True,
+) -> list[er.RegistryEntry]:
+    """Return the entity entries of a device, across HA 2026.8 device splits.
+
+    A stored device id may predate the 2026.8 split, in which case the entities it
+    used to carry are spread over the split devices - notably the Battery Notes
+    ones, which live on a different split than the source integration's.
+    """
+    return [
+        entry
+        for resolved_id in resolve_device_ids(hass, device_id)
+        for entry in er.async_entries_for_device(
+            registry, resolved_id, include_disabled_entities=include_disabled_entities
+        )
+    ]
+
+
 def battery_notes_type_for_device(hass: HomeAssistant, device_id: str) -> str | None:
     """Return a device's Battery Notes type/quantity formatted, or None.
 
@@ -90,9 +113,7 @@ def battery_notes_type_for_device(hass: HomeAssistant, device_id: str) -> str | 
     when Battery Notes isn't installed or has no type for the device.
     """
     registry = er.async_get(hass)
-    for entry in er.async_entries_for_device(
-        registry, device_id, include_disabled_entities=True
-    ):
+    for entry in _entity_entries_for_device(hass, registry, device_id):
         if entry.platform != BATTERY_NOTES_DOMAIN:
             continue
         state = hass.states.get(entry.entity_id)
@@ -390,11 +411,14 @@ class StockroomBatterySync:
         """Find the HA battery percentage source for a linked item."""
         registry = er.async_get(self.hass)
         if target.ha_device_id is not None:
-            device_registry = dr.async_get(self.hass)
-            if device_registry.async_get(target.ha_device_id) is not None:
-                entries = er.async_entries_for_device(
-                    registry, target.ha_device_id, include_disabled_entities=False
-                )
+            # The server stores the device id, which may predate HA 2026.8's split.
+            entries = _entity_entries_for_device(
+                self.hass,
+                registry,
+                target.ha_device_id,
+                include_disabled_entities=False,
+            )
+            if entries:
                 for entry in sorted(entries, key=lambda e: e.entity_id):
                     state = self.hass.states.get(entry.entity_id)
                     if (
@@ -419,7 +443,7 @@ class StockroomBatterySync:
     def _device_id_for_target(self, target: BatteryLinkTarget) -> str | None:
         """Resolve a target's HA device id (directly or via its entity)."""
         if target.ha_device_id is not None:
-            return target.ha_device_id
+            return resolve_device_id(self.hass, target.ha_device_id)
         if target.ha_entity_id is not None:
             entry = er.async_get(self.hass).async_get(target.ha_entity_id)
             return entry.device_id if entry is not None else None

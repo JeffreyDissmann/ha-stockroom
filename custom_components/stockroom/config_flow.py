@@ -68,6 +68,7 @@ from .linking import (
     get_link_maps,
     primary_entity_id,
     remove_link,
+    resolve_device_id,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -875,13 +876,20 @@ class StockroomOptionsFlow(OptionsFlow):
             }
 
         local_device_to_item, _ = get_link_maps(self.config_entry)
-        device_registry = dr.async_get(self.hass)
 
+        # The server may still hold device ids from before HA 2026.8 split devices
+        # per config entry; compare and repair on the live ids.
+        resolved_server: dict[str, dict[str, Any]] = {}
         for device_id, info in server.items():
+            resolved_id = resolve_device_id(self.hass, device_id)
+            if resolved_id is None:
+                self._repair_delete.append((info["item_id"], device_id))
+                continue
+            resolved_server[resolved_id] = info
+
+        for device_id, info in resolved_server.items():
             item_id = info["item_id"]
-            if device_registry.async_get(device_id) is None:
-                self._repair_delete.append((item_id, device_id))
-            elif device_id in local_device_to_item:
+            if device_id in local_device_to_item:
                 self._repair_refresh.append((device_id, item_id))
             else:
                 label = info["friendly_name"] or info["name"] or device_id
@@ -891,9 +899,9 @@ class StockroomOptionsFlow(OptionsFlow):
 
         # Local links the server doesn't know about (device renamed away / link lost).
         for device_id, item_id in local_device_to_item.items():
-            if device_id in server:
+            if device_id in resolved_server:
                 continue
-            if device_registry.async_get(device_id) is None:
+            if resolve_device_id(self.hass, device_id) is None:
                 self._repair_drop.append(device_id)
             else:
                 self._repair_refresh.append((device_id, item_id))
