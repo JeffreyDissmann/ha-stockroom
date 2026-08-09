@@ -1,7 +1,10 @@
-# Test/lint environment (Python 3.13). pytest-homeassistant-custom-component
+# Test/lint environment (Python 3.14). pytest-homeassistant-custom-component
 # pins the Home Assistant version it boots, so tests run against that core.
-# uv is used by scripts/setup to provision the Python 3.14 runtime.
-pytest-homeassistant-custom-component==0.13.316
-aioresponses==0.7.8
+# uv is used by scripts/setup to provision both Python 3.14 environments.
+pytest-homeassistant-custom-component==0.13.355
+# 0.7.9 still predates aiohttp 3.14's ClientResponse signature; tests/conftest.py
+# carries a shim for it.
+aioresponses==0.7.9
 ruff==0.15.15
-uv==0.9.26
+# Pinned by homeassistant 2026.8.1 itself; keep in sync with it.
+uv==0.11.31

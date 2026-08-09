@@ -64,7 +64,7 @@ class StockroomDataUpdateCoordinator(DataUpdateCoordinator[StockroomData]):
                     CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES
                 )
             )
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             minutes = DEFAULT_SCAN_INTERVAL_MINUTES
         minutes = max(
             MIN_SCAN_INTERVAL_MINUTES, min(MAX_SCAN_INTERVAL_MINUTES, minutes)

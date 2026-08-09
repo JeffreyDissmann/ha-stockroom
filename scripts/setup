@@ -1,26 +1,41 @@
 #!/usr/bin/env bash
-# Provision both dev environments:
-#   .venv     Python 3.13 — tests/lint (pytest-homeassistant-custom-component)
-#   .venv314  Python 3.14 — runtime for scripts/develop (Home Assistant 2026.3+)
+# Provision both dev environments (both Python 3.14 — Home Assistant 2026.3+
+# requires Python >= 3.14.2):
+#   .venv     tests/lint (pytest-homeassistant-custom-component)
+#   .venv314  runtime for scripts/develop (Home Assistant 2026.8+)
+#
+# uv fetches Python 3.14 as a standalone build, so no system Python 3.14 is
+# needed. uv itself is bootstrapped into a throwaway environment because the
+# test environment it creates is the one that later ships uv.
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-# 1) Test/lint environment (Python 3.13).
-if [[ ! -d ".venv" ]]; then
-    python3 -m venv .venv
+# 0) Bootstrap uv.
+if [[ -x ".venv/bin/uv" ]]; then
+    UV=".venv/bin/uv"
+else
+    rm -rf .uv-bootstrap
+    python3 -m venv .uv-bootstrap
+    .uv-bootstrap/bin/python -m pip install --quiet --upgrade pip uv
+    UV=".uv-bootstrap/bin/uv"
 fi
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install --requirement requirements-test.txt
 
-# 2) Runtime environment (Python 3.14 + Home Assistant 2026.3+).
-#    Home Assistant 2026.3+ requires Python >= 3.14.2; uv fetches it as a
-#    standalone build so no system Python 3.14 is needed.
-.venv/bin/uv python install 3.14
-if [[ ! -d ".venv314" ]]; then
-    .venv/bin/uv venv --python 3.14 .venv314
+"$UV" python install 3.14
+
+# 1) Test/lint environment (Python 3.14).
+if [[ ! -d ".venv" ]]; then
+    "$UV" venv --python 3.14 .venv
 fi
-.venv/bin/uv pip install --python .venv314/bin/python --requirement requirements.txt
+"$UV" pip install --python .venv/bin/python --requirement requirements-test.txt
+
+# 2) Runtime environment (Python 3.14 + Home Assistant 2026.8+).
+if [[ ! -d ".venv314" ]]; then
+    "$UV" venv --python 3.14 .venv314
+fi
+"$UV" pip install --python .venv314/bin/python --requirement requirements.txt
+
+rm -rf .uv-bootstrap
 
 echo "Setup complete. Run 'scripts/develop' to start Home Assistant."
