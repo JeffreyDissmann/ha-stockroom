@@ -82,7 +82,7 @@ class StockroomApiClient:
         detail = ""
         try:
             payload = await response.json(content_type=None)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             payload = None
 
         if isinstance(payload, dict):
@@ -106,7 +106,7 @@ class StockroomApiClient:
         errors: dict[str, list[str]] = {}
         try:
             payload = await response.json(content_type=None)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             payload = None
 
         if isinstance(payload, dict):
@@ -175,7 +175,9 @@ class StockroomApiClient:
                     raise StockroomApiError(
                         f"Stockroom {error_context} returned invalid JSON"
                     ) from err
-        except ClientError as err:
+        except (ClientError, TimeoutError) as err:
+            # aiohttp raises TimeoutError for its own timeouts, which is not a
+            # ClientError, so it has to be mapped explicitly.
             raise StockroomConnectionError from err
 
     # -- Read endpoints --------------------------------------------------
