@@ -21,11 +21,22 @@ A custom Home Assistant integration for [Stockroom](https://github.com/JeffreyDi
 - **Maintenance** — household overdue / due-soon counter sensors, plus service actions to **list**, **create**, and **complete** maintenance tasks on Stockroom items
 - **Battery sync** — pushes each linked item's battery level to Stockroom (on change and once a day), and mirrors the battery **type** from the [Battery Notes](https://github.com/andrew-codechimp/HA-Battery-Notes) integration when it's installed
 - **Service actions** for link / unlink / create-and-link / search, for use in automations
-- **English and German** translations, and a bundled **brand icon** (shown on Home Assistant 2026.3.0+)
+- **English and German** translations, and a bundled **brand icon**
 
 ## Requirements
 
-- Home Assistant **2024.12.0** or newer (the bundled logo requires **2026.3.0+**)
+- Home Assistant **2026.8.0** or newer
+
+  Home Assistant 2026.8 restricted every device to a single config entry. Version
+  0.4.0 follows that model: the diagnostic sensor now attaches to the linked
+  device directly instead of copying its identifiers (which on 2026.8 would fork
+  a duplicate device). On the first start after the upgrade it also migrates
+  itself — the stored links are re-pointed onto the devices Home Assistant split
+  them into (on both the Home Assistant and the Stockroom side), the existing
+  diagnostic sensors are carried over so they keep their entity IDs and history,
+  and the now-empty device copies the split left behind are removed. If a link
+  still looks wrong afterwards, run **Configure → Repair links**.
+
 - A reachable Stockroom instance
 - A Stockroom **API token**:
   - **read** ability for the statistics sensors
@@ -144,11 +155,13 @@ scripts/lint      # ruff check + format check
 scripts/test      # pytest (boots a real HA core with mocked Stockroom HTTP)
 ```
 
-`scripts/setup` creates two environments, because the runtime and the test
-harness need different Python versions:
+`scripts/setup` creates two environments, both on **Python 3.14** (Home Assistant
+2026.3+ requires 3.14.2, and its source no longer parses on 3.13):
 
-- **`.venv` (Python 3.13)** — tests and lint, via `pytest-homeassistant-custom-component` (which pins the Home Assistant core it boots).
-- **`.venv314` (Python 3.14)** — the live dev instance (`scripts/develop`), running Home Assistant 2026.3+ so local brand images work. Python 3.14.2 is fetched automatically with `uv`; no system Python 3.14 is required.
+- **`.venv`** — tests and lint, via `pytest-homeassistant-custom-component` (which pins the Home Assistant core it boots).
+- **`.venv314`** — the live dev instance (`scripts/develop`).
+
+Python 3.14.2 is fetched automatically with `uv`; no system Python 3.14 is required.
 
 ### End-to-end checklist (optional, manual)
 
