@@ -137,6 +137,13 @@ PRE_SPLIT_WITH_STOCKROOM_REGISTRY = _pre_split_registry(
     [OWNER_ENTRY_ID, HELPER_ENTRY_ID, STOCKROOM_ENTRY_ID]
 )
 
+# The same, but the composite never recorded a primary config entry, so no split
+# is preferred and the resolution has to fall back to "anything but our own copy".
+PRE_SPLIT_WITHOUT_PRIMARY_REGISTRY = _pre_split_registry(
+    [OWNER_ENTRY_ID, HELPER_ENTRY_ID, STOCKROOM_ENTRY_ID]
+)
+PRE_SPLIT_WITHOUT_PRIMARY_REGISTRY["data"]["devices"][0]["primary_config_entry"] = None
+
 
 @pytest.fixture
 def seeded_storage() -> dict[str, Any]:
@@ -374,6 +381,117 @@ async def test_setup_carries_the_sensor_over_and_drops_the_leftover_device(
 
     # The now-empty copy is gone, leaving only this integration's own hub device.
     own_devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+    assert [device.identifiers for device in own_devices] == [
+        {(DOMAIN, entry.entry_id)}
+    ]
+
+
+@pytest.mark.parametrize(
+    "seeded_storage", [{dr.STORAGE_KEY: PRE_SPLIT_WITHOUT_PRIMARY_REGISTRY}]
+)
+async def test_resolve_never_picks_this_integrations_own_copy(
+    hass: HomeAssistant,
+) -> None:
+    """With no preferred split, resolution still avoids our own copy.
+
+    A composite with no recorded primary config entry has no split to prefer.
+    Falling back to an arbitrary one can land on the copy this integration was
+    handed, which would attach the sensor to a duplicate of the device.
+    """
+    _add_source_entries(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=MOCK_CONFIG, entry_id=STOCKROOM_ENTRY_ID
+    )
+    entry.add_to_hass(hass)
+    registry = dr.async_get(hass)
+
+    resolved = resolve_device_id(hass, COMPOSITE_ID, STOCKROOM_ENTRY_ID)
+    assert registry.async_get(resolved).config_entry_id != STOCKROOM_ENTRY_ID
+
+    # A link already pointing at our own copy is recognised and re-resolved,
+    # even though that copy is a perfectly live device id.
+    own_copy = next(
+        device
+        for device in dr.async_entries_for_config_entry(registry, STOCKROOM_ENTRY_ID)
+        if device.composite_device_id == COMPOSITE_ID
+    )
+    assert registry.async_is_composite_device_id(own_copy.id) is False
+    assert resolve_device_id(hass, own_copy.id, STOCKROOM_ENTRY_ID) == resolved
+
+    # Entity lookups still fan back out over every split, including our own copy -
+    # an entity stranded on it has to stay findable.
+    assert set(resolve_device_ids(hass, own_copy.id, STOCKROOM_ENTRY_ID)) == {
+        split.id
+        for split in registry.async_get_devices_for_composite_device_id(COMPOSITE_ID)
+    }
+
+
+@pytest.mark.parametrize(
+    "seeded_storage", [{dr.STORAGE_KEY: PRE_SPLIT_WITHOUT_PRIMARY_REGISTRY}]
+)
+async def test_setup_repairs_a_link_left_on_our_own_copy(
+    hass: HomeAssistant,
+) -> None:
+    """A link stranded on this integration's copy is moved to the real device."""
+    _add_source_entries(hass)
+    registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_CONFIG,
+        unique_id=MOCK_HOST,
+        entry_id=STOCKROOM_ENTRY_ID,
+        options={},
+    )
+    entry.add_to_hass(hass)
+
+    own_copy = next(
+        device
+        for device in dr.async_entries_for_config_entry(registry, STOCKROOM_ENTRY_ID)
+        if device.composite_device_id == COMPOSITE_ID
+    )
+    real_device_id = resolve_device_id(hass, COMPOSITE_ID, STOCKROOM_ENTRY_ID)
+    entity_registry.async_get_or_create(
+        "sensor",
+        "demo",
+        "unique-1",
+        device_id=real_device_id,
+        config_entry=hass.config_entries.async_get_entry(OWNER_ENTRY_ID),
+    )
+    # The state 0.4.0 could leave behind: the link points at our copy, and the
+    # diagnostic sensor sits on it.
+    hass.config_entries.async_update_entry(entry, options=_linked_options(own_copy.id))
+    entity_registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{entry.entry_id}_{own_copy.id}_linked_item",
+        device_id=own_copy.id,
+        config_entry=entry,
+    )
+
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_ha_links(own_copy.id), repeat=True)
+        mocked.put(URL_HA_LINK, payload={"data": {}}, repeat=True)
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ha_device_to_item, _ = get_link_maps(entry)
+    assert ha_device_to_item == {real_device_id: 42}
+
+    linked = [
+        registry_entry
+        for registry_entry in er.async_entries_for_config_entry(
+            entity_registry, entry.entry_id
+        )
+        if registry_entry.unique_id.endswith("_linked_item")
+    ]
+    assert len(linked) == 1
+    assert linked[0].device_id == real_device_id
+
+    # The duplicate is gone from the device list.
+    own_devices = dr.async_entries_for_config_entry(registry, entry.entry_id)
     assert [device.identifiers for device in own_devices] == [
         {(DOMAIN, entry.entry_id)}
     ]

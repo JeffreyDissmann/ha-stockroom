@@ -88,6 +88,7 @@ def _entity_entries_for_device(
     registry: er.EntityRegistry,
     device_id: str,
     *,
+    own_entry_id: str | None = None,
     include_disabled_entities: bool = True,
 ) -> list[er.RegistryEntry]:
     """Return the entity entries of a device, across HA 2026.8 device splits.
@@ -98,14 +99,16 @@ def _entity_entries_for_device(
     """
     return [
         entry
-        for resolved_id in resolve_device_ids(hass, device_id)
+        for resolved_id in resolve_device_ids(hass, device_id, own_entry_id)
         for entry in er.async_entries_for_device(
             registry, resolved_id, include_disabled_entities=include_disabled_entities
         )
     ]
 
 
-def battery_notes_type_for_device(hass: HomeAssistant, device_id: str) -> str | None:
+def battery_notes_type_for_device(
+    hass: HomeAssistant, device_id: str, own_entry_id: str | None = None
+) -> str | None:
     """Return a device's Battery Notes type/quantity formatted, or None.
 
     Reads ``battery_type`` / ``battery_quantity`` from the Battery Notes entities
@@ -113,7 +116,9 @@ def battery_notes_type_for_device(hass: HomeAssistant, device_id: str) -> str | 
     when Battery Notes isn't installed or has no type for the device.
     """
     registry = er.async_get(hass)
-    for entry in _entity_entries_for_device(hass, registry, device_id):
+    for entry in _entity_entries_for_device(
+        hass, registry, device_id, own_entry_id=own_entry_id
+    ):
         if entry.platform != BATTERY_NOTES_DOMAIN:
             continue
         state = hass.states.get(entry.entity_id)
@@ -370,7 +375,7 @@ class StockroomBatterySync:
 
     def _battery_notes_type(self, device_id: str) -> str | None:
         """Read battery type/quantity from Battery Notes for a device, if any."""
-        return battery_notes_type_for_device(self.hass, device_id)
+        return battery_notes_type_for_device(self.hass, device_id, self.entry.entry_id)
 
     # -- Battery change events -------------------------------------------
 
@@ -416,6 +421,7 @@ class StockroomBatterySync:
                 self.hass,
                 registry,
                 target.ha_device_id,
+                own_entry_id=self.entry.entry_id,
                 include_disabled_entities=False,
             )
             if entries:
@@ -443,7 +449,9 @@ class StockroomBatterySync:
     def _device_id_for_target(self, target: BatteryLinkTarget) -> str | None:
         """Resolve a target's HA device id (directly or via its entity)."""
         if target.ha_device_id is not None:
-            return resolve_device_id(self.hass, target.ha_device_id)
+            return resolve_device_id(
+                self.hass, target.ha_device_id, self.entry.entry_id
+            )
         if target.ha_entity_id is not None:
             entry = er.async_get(self.hass).async_get(target.ha_entity_id)
             return entry.device_id if entry is not None else None

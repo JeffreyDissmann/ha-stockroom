@@ -546,7 +546,12 @@ class StockroomOptionsFlow(OptionsFlow):
             parent_options = []
 
         details = self._device_details(device_id)
-        battery_type_default = battery_notes_type_for_device(self.hass, device_id) or ""
+        battery_type_default = (
+            battery_notes_type_for_device(
+                self.hass, device_id, self.config_entry.entry_id
+            )
+            or ""
+        )
         schema_dict: dict[Any, Any] = {
             vol.Required(ATTR_NAME, default=self._device_name(device_id)): str,
             vol.Required(ATTR_TYPE, default=DEFAULT_ITEM_TYPE): selector.SelectSelector(
@@ -886,7 +891,9 @@ class StockroomOptionsFlow(OptionsFlow):
         # per config entry; compare and repair on the live ids.
         resolved_server: dict[str, dict[str, Any]] = {}
         for device_id, info in server.items():
-            resolved_id = resolve_device_id(self.hass, device_id)
+            resolved_id = resolve_device_id(
+                self.hass, device_id, self.config_entry.entry_id
+            )
             if resolved_id is None:
                 self._repair_delete.append((info["item_id"], device_id))
                 continue
@@ -906,7 +913,10 @@ class StockroomOptionsFlow(OptionsFlow):
         for device_id, item_id in local_device_to_item.items():
             if device_id in resolved_server:
                 continue
-            if resolve_device_id(self.hass, device_id) is None:
+            if (
+                resolve_device_id(self.hass, device_id, self.config_entry.entry_id)
+                is None
+            ):
                 self._repair_drop.append(device_id)
             else:
                 self._repair_refresh.append((device_id, item_id))
@@ -923,7 +933,9 @@ class StockroomOptionsFlow(OptionsFlow):
 
         try:
             for device_id, item_id in to_apply:
-                entity_id = primary_entity_id(self.hass, device_id)
+                entity_id = primary_entity_id(
+                    self.hass, device_id, self.config_entry.entry_id
+                )
                 if entity_id is None:
                     continue  # cannot form a valid link without an entity
                 try:
@@ -984,13 +996,13 @@ class StockroomOptionsFlow(OptionsFlow):
         ha_device_to_item, _ = get_link_maps(self.config_entry)
         if device_id in ha_device_to_item:
             return "device_already_linked"
-        if primary_entity_id(self.hass, device_id) is None:
+        if primary_entity_id(self.hass, device_id, self.config_entry.entry_id) is None:
             return "device_has_no_entity"
         return None
 
     async def _async_try_link(self, device_id: str, item_id: int) -> str | None:
         """Link a device to an item, returning an error key on failure."""
-        entity_id = primary_entity_id(self.hass, device_id)
+        entity_id = primary_entity_id(self.hass, device_id, self.config_entry.entry_id)
         if entity_id is None:
             return "device_has_no_entity"
         try:
@@ -1019,7 +1031,7 @@ class StockroomOptionsFlow(OptionsFlow):
         battery_type: str | None = None,
     ) -> str | None:
         """Create a Stockroom item and link it, returning an error key on failure."""
-        entity_id = primary_entity_id(self.hass, device_id)
+        entity_id = primary_entity_id(self.hass, device_id, self.config_entry.entry_id)
         if entity_id is None:
             return "device_has_no_entity"
         try:
@@ -1067,7 +1079,9 @@ class StockroomOptionsFlow(OptionsFlow):
                 ha_map, _ = get_link_maps(self.config_entry, new_options)
                 if device_id in ha_map:
                     continue
-                entity_id = primary_entity_id(self.hass, device_id)
+                entity_id = primary_entity_id(
+                    self.hass, device_id, self.config_entry.entry_id
+                )
                 if entity_id is None:
                     continue
                 payload: dict[str, Any] = {
@@ -1193,7 +1207,8 @@ class StockroomOptionsFlow(OptionsFlow):
             device.id
             for device in dr.async_entries_for_area(device_registry, area_id)
             if device.id not in ha_device_to_item
-            and primary_entity_id(self.hass, device.id) is not None
+            and primary_entity_id(self.hass, device.id, self.config_entry.entry_id)
+            is not None
         ]
 
     def _device_name(self, device_id: str) -> str:

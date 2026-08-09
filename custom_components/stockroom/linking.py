@@ -109,7 +109,29 @@ def build_updated_options(
 
 
 @callback
-def resolve_device_ids(hass: HomeAssistant, device_id: str) -> list[str]:
+def _composite_id_of_own_split(
+    hass: HomeAssistant, device_id: str, own_entry_id: str | None
+) -> str | None:
+    """Return the composite id if device_id is this integration's own split.
+
+    A link may point at the copy of a device that HA 2026.8's split handed this
+    integration, either because it was written before the resolution below
+    preferred the source integration, or because the sensor was re-attached to
+    that copy by a pre-0.4.0 version running on 2026.8. Such a link has to be
+    resolved again from the composite it came from.
+    """
+    if own_entry_id is None:
+        return None
+    device = dr.async_get(hass).async_get(device_id)
+    if device is None or device.config_entry_id != own_entry_id:
+        return None
+    return device.composite_device_id
+
+
+@callback
+def resolve_device_ids(
+    hass: HomeAssistant, device_id: str, own_entry_id: str | None = None
+) -> list[str]:
     """Return every live device id a stored device id stands for.
 
     Home Assistant 2026.8 restricted a device to a single config entry and split
@@ -122,8 +144,11 @@ def resolve_device_ids(hass: HomeAssistant, device_id: str) -> list[str]:
     registry = dr.async_get(hass)
     is_composite = registry.async_is_composite_device_id(device_id)
     if is_composite is False:
-        return [device_id]
-    if is_composite is None:
+        composite_id = _composite_id_of_own_split(hass, device_id, own_entry_id)
+        if composite_id is None:
+            return [device_id]
+        device_id = composite_id
+    elif is_composite is None:
         return []
     return [
         split.id
@@ -132,30 +157,42 @@ def resolve_device_ids(hass: HomeAssistant, device_id: str) -> list[str]:
 
 
 @callback
-def resolve_device_id(hass: HomeAssistant, device_id: str) -> str | None:
+def resolve_device_id(
+    hass: HomeAssistant, device_id: str, own_entry_id: str | None = None
+) -> str | None:
     """Map a stored device id onto the single device id to store and attach to.
 
-    For a pre-migration composite this is the split that inherited the composite's
-    former primary config entry - the device of the integration that actually owns
-    the hardware - matching how core itself picks the base for its shim. Returns
-    ``None`` for an unknown id. See :func:`resolve_device_ids` when enumerating
-    entities, which have to be collected from every split.
+    This is the split owned by the integration that actually owns the hardware:
+    the one that inherited the composite's former primary config entry, and
+    failing that any split which is not this integration's own copy. Never
+    resolving to our own copy matters - a composite whose `primary_config_entry`
+    was never recorded has no preferred split, and picking ours would attach the
+    diagnostic sensor to a duplicate of the device instead of the real one.
+
+    Returns ``None`` for an unknown id. See :func:`resolve_device_ids` when
+    enumerating entities, which have to be collected from every split.
     """
     registry = dr.async_get(hass)
     is_composite = registry.async_is_composite_device_id(device_id)
     if is_composite is False:
-        return device_id
-    if is_composite is None:
+        composite_id = _composite_id_of_own_split(hass, device_id, own_entry_id)
+        if composite_id is None:
+            return device_id
+        device_id = composite_id
+    elif is_composite is None:
         return None
 
     splits = registry.async_get_devices_for_composite_device_id(device_id)
-    if not splits:
+    candidates = [
+        split for split in splits if split.config_entry_id != own_entry_id
+    ] or splits
+    if not candidates:
         return None
     primary = splits[0].composite_primary_config_entry
-    for split in splits:
+    for split in candidates:
         if split.config_entry_id == primary:
             return split.id
-    return splits[0].id
+    return candidates[0].id
 
 
 def get_ha_device_url(hass: HomeAssistant, ha_device_id: str) -> str:
@@ -281,12 +318,14 @@ def _clear_configuration_url_if_matching(
         device_registry.async_update_device(ha_device_id, configuration_url=None)
 
 
-def primary_entity_id(hass: HomeAssistant, device_id: str) -> str | None:
+def primary_entity_id(
+    hass: HomeAssistant, device_id: str, own_entry_id: str | None = None
+) -> str | None:
     """Return a representative entity id for a device, preferring a primary one."""
     registry = er.async_get(hass)
     entries = [
         entry
-        for resolved_id in resolve_device_ids(hass, device_id)
+        for resolved_id in resolve_device_ids(hass, device_id, own_entry_id)
         for entry in er.async_entries_for_device(
             registry, resolved_id, include_disabled_entities=True
         )
@@ -384,7 +423,7 @@ async def async_migrate_split_device_links(
 
     remapped: dict[str, str] = {}
     for device_id in ha_device_to_item:
-        resolved = resolve_device_id(hass, device_id)
+        resolved = resolve_device_id(hass, device_id, config_entry.entry_id)
         if resolved is not None and resolved != device_id:
             remapped[device_id] = resolved
     if not remapped:
@@ -443,7 +482,7 @@ async def async_refresh_link(
         item_id = ha_device_to_item.get(device_id)
     if item_id is None:
         return
-    entity_id = primary_entity_id(hass, device_id)
+    entity_id = primary_entity_id(hass, device_id, config_entry.entry_id)
     if entity_id is None:
         return
     await api.async_set_item_ha_link(
