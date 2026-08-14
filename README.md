@@ -142,7 +142,8 @@ Works with anything that signals a problem — a `problem` binary sensor (OK sta
 - **Invalid token / re-auth prompt** — the token was rejected (HTTP 401). Rotate it via the re-auth flow.
 - **Cannot connect** — verify the host URL/port and that Stockroom is reachable from Home Assistant.
 - **Rate limited (HTTP 429)** — Stockroom allows 120 requests/min per token; increase the polling interval if needed.
-- **No logo on the integration card** — the bundled brand icon only renders on Home Assistant **2026.3.0+**; older cores show a placeholder.
+- **A linked device appears twice, once under Stockroom** — a leftover from Home Assistant 2026.8's device split. It clears itself on restart from v0.4.1 on, unless another integration (typically Battery Notes) put an entity on the duplicate; then re-point that integration at the real device and delete the leftover by hand.
+- **An automation reports an unknown device** — Home Assistant 2026.8 reissued device IDs. Automations keep working from v0.4.2 on, but re-pick the device to make the reference valid again.
 
 ## Development
 
