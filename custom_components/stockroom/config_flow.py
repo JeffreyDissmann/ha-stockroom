@@ -31,6 +31,7 @@ from .api import (
     StockroomConnectionError,
     StockroomNotFoundError,
     StockroomPermissionError,
+    StockroomRateLimitError,
     normalize_stockroom_host,
 )
 from .battery import battery_notes_type_for_device
@@ -827,7 +828,7 @@ class StockroomOptionsFlow(OptionsFlow):
         ):
             # Links are already in sync, but still honour the explicit click by
             # re-pushing battery level/type for the linked items.
-            await self._async_resync_batteries()
+            self._schedule_battery_resync()
             return self.async_abort(reason="nothing_to_repair")
 
         schema_dict: dict[Any, Any] = {}
@@ -881,6 +882,8 @@ class StockroomOptionsFlow(OptionsFlow):
             server[device_id] = {
                 "item_id": item_id,
                 "friendly_name": link.get("friendly_name"),
+                "ha_entity_id": link.get("ha_entity_id"),
+                "ha_device_id": device_id,
                 "name": element.get("name"),
                 "location_path": element.get("location_path"),
             }
@@ -902,7 +905,8 @@ class StockroomOptionsFlow(OptionsFlow):
         for device_id, info in resolved_server.items():
             item_id = info["item_id"]
             if device_id in local_device_to_item:
-                self._repair_refresh.append((device_id, item_id))
+                if self._link_differs(device_id, info):
+                    self._repair_refresh.append((device_id, item_id))
             else:
                 label = info["friendly_name"] or info["name"] or device_id
                 if info["location_path"]:
@@ -920,6 +924,20 @@ class StockroomOptionsFlow(OptionsFlow):
                 self._repair_drop.append(device_id)
             else:
                 self._repair_refresh.append((device_id, item_id))
+
+    def _link_differs(self, device_id: str, info: dict[str, Any]) -> bool:
+        """Return True if Stockroom's link differs from what we would push.
+
+        Re-pushing a link that is already correct is a wasted round trip, and an
+        instance with a few hundred links would otherwise walk the whole set on
+        every repair - far past the per-token rate limit.
+        """
+        if info.get("ha_device_id") != device_id:
+            return True  # re-pointed, e.g. by HA 2026.8's device split
+        if info.get("friendly_name") != self._device_name(device_id):
+            return True
+        entity_id = primary_entity_id(self.hass, device_id, self.config_entry.entry_id)
+        return entity_id is not None and info.get("ha_entity_id") != entity_id
 
     async def _async_apply_repair(self, selected_adopt: list[str]) -> ConfigFlowResult:
         """Apply the repair plan: refresh, adopt selected, delete stale."""
@@ -956,23 +974,44 @@ class StockroomOptionsFlow(OptionsFlow):
                 await self._api.async_delete_item_ha_link(item_id)
                 new_options = self._drop_device(new_options, device_id, item_id)
         except StockroomPermissionError:
-            return self.async_abort(reason="token_read_only")
+            return self._abort_keeping_progress(new_options, "token_read_only")
+        except StockroomRateLimitError:
+            return self._abort_keeping_progress(new_options, "rate_limited")
         except StockroomApiError:
-            return self.async_abort(reason="cannot_connect")
+            return self._abort_keeping_progress(new_options, "cannot_connect")
 
         for device_id in self._repair_drop:
             new_options = self._drop_device(new_options, device_id)
 
         # Re-push battery level/type for the linked items as part of the repair.
-        await self._async_resync_batteries()
+        self._schedule_battery_resync()
 
         return self.async_create_entry(title="", data=new_options)
 
-    async def _async_resync_batteries(self) -> None:
-        """Force the running battery sync to re-push level/type for linked items."""
+    def _abort_keeping_progress(
+        self, new_options: dict[str, Any], reason: str
+    ) -> ConfigFlowResult:
+        """Persist the links repaired so far, then abort with ``reason``.
+
+        Aborting the flow discards its result, so without this the links already
+        written to Stockroom would be lost on the Home Assistant side - leaving
+        the two sides disagreeing exactly when a repair was meant to fix that.
+        Re-running the repair then continues where this one stopped.
+        """
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, options=new_options
+        )
+        return self.async_abort(reason=reason)
+
+    def _schedule_battery_resync(self) -> None:
+        """Ask the running battery sync to re-push level/type in the background.
+
+        The sweep touches every linked item, so it is paced and can run for
+        minutes; awaiting it here would hang the dialog.
+        """
         battery_sync = getattr(self.config_entry.runtime_data, "battery_sync", None)
         if battery_sync is not None:
-            await battery_sync.async_resync_now()
+            battery_sync.async_schedule_resync()
 
     def _drop_device(
         self, options: dict[str, Any], device_id: str, item_id: int | None = None

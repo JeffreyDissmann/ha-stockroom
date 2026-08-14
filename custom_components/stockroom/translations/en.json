@@ -182,7 +182,7 @@
       },
       "repair": {
         "title": "Repair links",
-        "description": "Reconcile Home Assistant with Stockroom. {refresh_count} link(s) will be refreshed, {remove_count} stale link(s) (device removed) will be deleted, and {adopt_count} Stockroom link(s) point at devices Home Assistant isn't tracking. Choose which of those to adopt, then submit to apply. Battery levels and types are re-synced for linked items, too.",
+        "description": "Reconcile Home Assistant with Stockroom. {refresh_count} link(s) will be refreshed, {remove_count} stale link(s) (device removed) will be deleted, and {adopt_count} Stockroom link(s) point at devices Home Assistant isn't tracking. Choose which of those to adopt, then submit to apply. Battery levels and types are re-synced in the background afterwards.",
         "data": {
           "adopt": "Adopt these links"
         }
@@ -206,13 +206,14 @@
       "no_unlinked_ha_devices": "No unlinked devices are available in that area.",
       "missing_device": "No device was selected.",
       "missing_area": "No area was selected.",
-      "nothing_to_repair": "Links are already in sync; battery levels and types were re-synced.",
+      "nothing_to_repair": "Links are already in sync; battery levels and types are being re-synced in the background.",
       "item_not_found": "That Stockroom item was not found.",
       "link_conflict": "That device or item is already linked.",
       "token_read_only": "This needs a Stockroom token with the write ability, but the configured token is read-only.",
       "create_failed": "Some items could not be created. Items created before the error were kept; check Stockroom and retry.",
       "link_not_replaced": "The existing link was kept; no changes were made.",
-      "cannot_connect": "Failed to connect to Stockroom."
+      "cannot_connect": "Failed to connect to Stockroom.",
+      "rate_limited": "Stockroom's rate limit was reached, so the repair stopped part-way. The links repaired so far were kept - run Repair links again in a minute to finish the rest."
     }
   },
   "selector": {

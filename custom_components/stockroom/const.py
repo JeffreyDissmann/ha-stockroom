@@ -77,6 +77,10 @@ DEFAULT_ITEM_TYPE = "item"
 # and at least once a day (heartbeat), and mirror the battery type from the
 # Battery Notes integration when it is installed.
 BATTERY_HEARTBEAT_HOURS = 24
+# Seconds between items during a manual battery re-sync. Stockroom allows 120
+# requests/min per token; one item costs at least one request, so this paces the
+# sweep to roughly half the budget and leaves room for polling.
+BATTERY_RESYNC_INTERVAL_SECONDS = 1.0
 
 # Battery Notes (https://codechimp.org/HA-Battery-Notes) is the de-facto source
 # of battery chemistry/quantity in Home Assistant. Optional soft dependency:

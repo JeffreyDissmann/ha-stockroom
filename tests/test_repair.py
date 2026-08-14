@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import patch
+
 from aioresponses import aioresponses
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.stockroom import api, battery
 from custom_components.stockroom.const import (
     CONF_HA_DEVICE_TO_ITEM,
     CONF_ITEM_TO_HA_DEVICE,
@@ -241,3 +245,167 @@ async def test_repair_nothing_to_do(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "nothing_to_repair"
+
+
+async def test_repair_skips_links_already_in_sync(hass: HomeAssistant) -> None:
+    """A link that already matches Stockroom is not re-pushed.
+
+    An instance with a few hundred links would otherwise walk the whole set on
+    every repair, well past the per-token rate limit.
+    """
+    device_id = _make_device(hass, "dev-1", "Device")
+    entity_id = er.async_get(hass).async_get_entity_id("sensor", "demo", "uniq-dev-1")
+    ha_links = {
+        "data": [
+            {
+                "id": 42,
+                "name": "Item",
+                "location_path": "Garage",
+                "home_assistant_link": {
+                    "ha_device_id": device_id,
+                    "ha_entity_id": entity_id,
+                    "friendly_name": "Device",
+                },
+            }
+        ],
+        "meta": {"last_page": 1},
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_HA_LINKS, payload=ha_links, repeat=True)
+        mocked.put(URL_HA_LINK, status=200, payload=LINK_RESPONSE, repeat=True)
+        mocked.post(URL_BATTERY_READINGS, status=201, payload={}, repeat=True)
+        entry = await _setup(hass, mocked, options=_links(device_id, 42))
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "repair"}
+        )
+
+        puts = [
+            req
+            for (method, _url), reqs in mocked.requests.items()
+            for req in reqs
+            if method == "PUT"
+        ]
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "nothing_to_repair"
+    assert puts == []
+
+
+@patch.object(api, "RATE_LIMIT_BACKOFF_SECONDS", 0)
+async def test_repair_keeps_progress_when_rate_limited(hass: HomeAssistant) -> None:
+    """A rate limit part-way through keeps the links already repaired.
+
+    Aborting discards the flow's result, so without this the links written to
+    Stockroom would be lost on the Home Assistant side - the two ends
+    disagreeing exactly when a repair was meant to fix that.
+    """
+    adopt_a = _make_device(hass, "a", "Adopt A")
+    adopt_b = _make_device(hass, "b", "Adopt B")
+    ha_links = {
+        "data": [
+            {
+                "id": 10,
+                "name": "A",
+                "location_path": "",
+                "home_assistant_link": {"ha_device_id": adopt_a, "friendly_name": "A"},
+            },
+            {
+                "id": 11,
+                "name": "B",
+                "location_path": "",
+                "home_assistant_link": {"ha_device_id": adopt_b, "friendly_name": "B"},
+            },
+        ],
+        "meta": {"last_page": 1},
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_HA_LINKS, payload=ha_links, repeat=True)
+        # First adoption succeeds, the second is rate limited.
+        mocked.put(URL_HA_LINK, status=200, payload=LINK_RESPONSE)
+        mocked.put(URL_HA_LINK, status=429, repeat=True)
+        entry = await _setup(hass, mocked)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "repair"}
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"adopt": [adopt_a, adopt_b]}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "rate_limited"
+
+    # The link adopted before the rate limit survived on the HA side.
+    ha_device_to_item, _ = get_link_maps(entry)
+    assert len(ha_device_to_item) == 1
+
+
+@patch.object(battery, "BATTERY_RESYNC_INTERVAL_SECONDS", 0)
+async def test_repair_resync_runs_in_the_background(hass: HomeAssistant) -> None:
+    """The repair dialog returns without waiting for the battery sweep.
+
+    The sweep touches every linked item and is paced under Stockroom's rate
+    limit, so awaiting it would hang the dialog for minutes on a large inventory.
+    """
+    device_id = _make_device(hass, "dev-1", "Device")
+    entity_id = er.async_get(hass).async_get_entity_id("sensor", "demo", "uniq-dev-1")
+    ha_links = {
+        "data": [
+            {
+                "id": 42,
+                "name": "Item",
+                "location_path": "",
+                "home_assistant_link": {
+                    "ha_device_id": device_id,
+                    "ha_entity_id": entity_id,
+                    "friendly_name": "Device",
+                },
+            }
+        ],
+        "meta": {"last_page": 1},
+    }
+    with aioresponses() as mocked:
+        mocked.get(URL_HA_LINKS, payload=ha_links, repeat=True)
+        mocked.post(URL_BATTERY_READINGS, status=201, payload={}, repeat=True)
+        entry = await _setup(hass, mocked, options=_links(device_id, 42))
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {"next_step_id": "repair"}
+        )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "nothing_to_repair"
+
+        # Backgrounded rather than awaited by the flow.
+        assert entry.runtime_data.battery_sync._resync_task is not None
+        await hass.async_block_till_done()
+
+
+async def test_battery_resync_does_not_stack(hass: HomeAssistant) -> None:
+    """Clicking repair again while a sweep runs does not start a second one."""
+    with aioresponses() as mocked:
+        mocked.get(
+            URL_HA_LINKS, payload={"data": [], "meta": {"last_page": 1}}, repeat=True
+        )
+        entry = await _setup(hass, mocked)
+
+    sync = entry.runtime_data.battery_sync
+    running = asyncio.Event()
+
+    async def _never_finishes() -> None:
+        await running.wait()
+
+    with patch.object(sync, "async_resync_now", side_effect=_never_finishes):
+        sync.async_schedule_resync()
+        first = sync._resync_task
+        assert first is not None and not first.done()
+
+        sync.async_schedule_resync()
+        assert sync._resync_task is first
+
+    running.set()
+    await hass.async_block_till_done()

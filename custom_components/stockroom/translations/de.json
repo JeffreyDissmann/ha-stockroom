@@ -182,7 +182,7 @@
       },
       "repair": {
         "title": "Verknüpfungen reparieren",
-        "description": "Gleicht Home Assistant mit Stockroom ab. {refresh_count} Verknüpfung(en) werden aktualisiert, {remove_count} verwaiste Verknüpfung(en) (Gerät entfernt) werden gelöscht, und {adopt_count} Stockroom-Verknüpfung(en) zeigen auf Geräte, die Home Assistant nicht verfolgt. Wähle aus, welche davon übernommen werden sollen, und bestätige zum Anwenden. Batteriestände und -typen werden für verknüpfte Objekte ebenfalls neu synchronisiert.",
+        "description": "Gleicht Home Assistant mit Stockroom ab. {refresh_count} Verknüpfung(en) werden aktualisiert, {remove_count} verwaiste Verknüpfung(en) (Gerät entfernt) werden gelöscht, und {adopt_count} Stockroom-Verknüpfung(en) zeigen auf Geräte, die Home Assistant nicht verfolgt. Wähle aus, welche davon übernommen werden sollen, und bestätige zum Anwenden. Batteriestände und -typen werden anschließend im Hintergrund neu synchronisiert.",
         "data": {
           "adopt": "Diese Verknüpfungen übernehmen"
         }
@@ -206,13 +206,14 @@
       "no_unlinked_ha_devices": "In diesem Bereich sind keine nicht verknüpften Geräte verfügbar.",
       "missing_device": "Es wurde kein Gerät ausgewählt.",
       "missing_area": "Es wurde kein Bereich ausgewählt.",
-      "nothing_to_repair": "Verknüpfungen sind bereits synchron; Batteriestände und -typen wurden neu synchronisiert.",
+      "nothing_to_repair": "Verknüpfungen sind bereits synchron; Batteriestände und -typen werden im Hintergrund neu synchronisiert.",
       "item_not_found": "Dieses Stockroom-Objekt wurde nicht gefunden.",
       "link_conflict": "Dieses Gerät oder Objekt ist bereits verknüpft.",
       "token_read_only": "Dafür wird ein Stockroom-Token mit Schreibberechtigung benötigt, das konfigurierte Token ist jedoch schreibgeschützt.",
       "create_failed": "Einige Objekte konnten nicht erstellt werden. Vor dem Fehler erstellte Objekte wurden beibehalten; prüfe Stockroom und versuche es erneut.",
       "link_not_replaced": "Die vorhandene Verknüpfung wurde beibehalten; es wurden keine Änderungen vorgenommen.",
-      "cannot_connect": "Verbindung zu Stockroom fehlgeschlagen."
+      "cannot_connect": "Verbindung zu Stockroom fehlgeschlagen.",
+      "rate_limited": "Das Anfragelimit von Stockroom wurde erreicht, daher wurde die Reparatur vorzeitig beendet. Die bereits reparierten Verknüpfungen wurden beibehalten – führe „Verknüpfungen reparieren“ in einer Minute erneut aus, um den Rest abzuschließen."
     }
   },
   "selector": {

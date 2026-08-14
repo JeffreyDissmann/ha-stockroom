@@ -8,6 +8,7 @@ it is installed. Stockroom owns all forecasting; this only pushes raw readings.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -38,6 +39,7 @@ from .const import (
     ATTR_BATTERY_TYPE_AND_QUANTITY,
     BATTERY_HEARTBEAT_HOURS,
     BATTERY_NOTES_DOMAIN,
+    BATTERY_RESYNC_INTERVAL_SECONDS,
     EVENT_BATTERY_NOTES_REPLACED,
 )
 from .coordinator import StockroomConfigEntry, StockroomDataUpdateCoordinator
@@ -161,6 +163,7 @@ class StockroomBatterySync:
         self._tracked_entities: set[str] = set()
         self._tracked_items: set[int] = set()
         self._type_cache: dict[int, str] = {}
+        self._resync_task: asyncio.Task[None] | None = None
         self._write_warned = False
 
     @callback
@@ -193,18 +196,42 @@ class StockroomBatterySync:
             unsub()
         self._unsubs.clear()
 
+    @callback
+    def async_schedule_resync(self) -> None:
+        """Start a paced re-sync of every linked item in the background.
+
+        A re-sync touches every linked item, so on a large inventory it runs for
+        minutes and would outrun Stockroom's per-token rate limit. Running it as
+        a background task keeps the "Repair links" dialog responsive; the pacing
+        lives in :meth:`async_resync_now`.
+        """
+        if self._resync_task is not None and not self._resync_task.done():
+            _LOGGER.debug("A battery re-sync is already running; not starting another")
+            return
+        self._resync_task = self.entry.async_create_background_task(
+            self.hass, self.async_resync_now(), name="stockroom_battery_resync"
+        )
+
     async def async_resync_now(self) -> None:
         """Force-push the current level and re-set the type for every target.
 
         Used by the manual "Repair links" action: it pushes the current battery
-        level and re-applies the Battery Notes type for each linked item right
-        now, instead of waiting for the next change or the daily heartbeat.
+        level and re-applies the Battery Notes type for each linked item,
+        instead of waiting for the next change or the daily heartbeat.
+
+        Paced to stay under Stockroom's rate limit, since every linked item costs
+        at least one request.
         """
         data = self.coordinator.data
         targets = list(data.battery_targets) if data is not None else []
+        if not targets:
+            return
         # Drop the cache so a type that drifted on the Stockroom side is re-set.
         self._type_cache.clear()
-        for target in targets:
+        _LOGGER.info("Re-syncing battery data for %s Stockroom item(s)", len(targets))
+        for index, target in enumerate(targets):
+            if index:
+                await asyncio.sleep(BATTERY_RESYNC_INTERVAL_SECONDS)
             source = self._resolve_source(target)
             if source is not None:
                 state = self.hass.states.get(source.entity_id)
@@ -212,6 +239,7 @@ class StockroomBatterySync:
                 if percent is not None:
                     await self._async_push(target.item_id, percent)
             await self._async_sync_battery_type(target)
+        _LOGGER.info("Battery re-sync finished for %s Stockroom item(s)", len(targets))
 
     # -- Reconciliation --------------------------------------------------
 
