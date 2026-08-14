@@ -17,7 +17,7 @@ blueprint:
   domain: automation
   author: Jeffrey Dissmann
   homeassistant:
-    min_version: "2024.12.0"
+    min_version: "2026.8.0"
   input:
     flag_entity:
       name: Maintenance flag entity
@@ -49,6 +49,12 @@ blueprint:
       description: >
         The Home Assistant device linked to the Stockroom item that should carry
         the maintenance task.
+
+
+        Home Assistant 2026.8 gave devices new IDs when it split devices that
+        belonged to several integrations. If this automation was built before
+        that, re-pick the device here - the integration resolves the old ID, but
+        only re-picking makes the reference valid to Home Assistant again.
       selector:
         device:
           filter:
