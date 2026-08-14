@@ -62,7 +62,13 @@ from .const import (
     SERVICE_UNLINK_ITEM,
 )
 from .coordinator import StockroomConfigEntry
-from .linking import apply_link, device_friendly_name, get_link_maps, remove_link
+from .linking import (
+    apply_link,
+    device_friendly_name,
+    get_link_maps,
+    remove_link,
+    resolve_device_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -197,6 +203,14 @@ def _resolve_target_item_id(
     device_id = call.data[ATTR_DEVICE_ID]
     ha_device_to_item, _ = get_link_maps(entry)
     item_id = ha_device_to_item.get(device_id)
+    if item_id is None:
+        # Automations and scripts store the device id they were built with, and
+        # Home Assistant 2026.8 changed those when it split devices per config
+        # entry. Resolve the stored id onto the device the link uses now, so an
+        # automation written before the upgrade keeps working.
+        resolved_id = resolve_device_id(hass, device_id, entry.entry_id)
+        if resolved_id is not None:
+            item_id = ha_device_to_item.get(resolved_id)
     if item_id is None:
         raise ServiceValidationError(
             translation_domain=DOMAIN,

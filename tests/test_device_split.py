@@ -37,6 +37,7 @@ from .const import (
     STATISTICS_PAYLOAD,
     URL_HA_LINK,
     URL_HA_LINKS,
+    URL_MAINTENANCE_TASKS,
     URL_STATISTICS,
 )
 
@@ -495,3 +496,50 @@ async def test_setup_repairs_a_link_left_on_our_own_copy(
     assert [device.identifiers for device in own_devices] == [
         {(DOMAIN, entry.entry_id)}
     ]
+
+
+@pytest.mark.parametrize(
+    "seeded_storage", [{dr.STORAGE_KEY: PRE_SPLIT_DEVICE_REGISTRY}]
+)
+async def test_service_accepts_a_pre_split_device_id(hass: HomeAssistant) -> None:
+    """An automation still carrying the pre-split device id keeps working.
+
+    Automations and scripts store the device id they were built with, and the
+    2026.8 split changed it - so the service has to resolve the stored id rather
+    than reject it as unlinked.
+    """
+    _add_source_entries(hass)
+    real_device_id = resolve_device_id(hass, COMPOSITE_ID)
+    er.async_get(hass).async_get_or_create(
+        "sensor",
+        "demo",
+        "unique-1",
+        device_id=real_device_id,
+        config_entry=hass.config_entries.async_get_entry(OWNER_ENTRY_ID),
+    )
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_CONFIG,
+        unique_id=MOCK_HOST,
+        options=_linked_options(real_device_id),
+    )
+    entry.add_to_hass(hass)
+
+    with aioresponses() as mocked:
+        mocked.get(URL_STATISTICS, payload=STATISTICS_PAYLOAD, repeat=True)
+        mocked.get(URL_HA_LINKS, payload=_ha_links(real_device_id), repeat=True)
+        mocked.get(URL_MAINTENANCE_TASKS, payload={"data": []}, repeat=True)
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        # COMPOSITE_ID is what a pre-upgrade automation would still pass.
+        response = await hass.services.async_call(
+            DOMAIN,
+            "list_maintenance_tasks",
+            {"device_id": COMPOSITE_ID},
+            blocking=True,
+            return_response=True,
+        )
+
+    assert response == {"tasks": []}
