@@ -2,15 +2,40 @@
 
 from __future__ import annotations
 
+import asyncio
 from http import HTTPStatus
+import logging
 from typing import Any
 
 from aiohttp import ClientError, ClientResponse, ClientSession
+from aiohttp.hdrs import RETRY_AFTER
 from homeassistant.util.network import normalize_url
 from yarl import URL
 
 from .const import API_BASE_PATH
 from .models import StockroomStatistics, StockroomUser
+
+_LOGGER = logging.getLogger(__name__)
+
+# Stockroom allows 120 requests/min per token. Bulk actions can outrun that, so
+# a 429 is waited out rather than failed - capped so a genuinely throttled token
+# still surfaces the error instead of hanging the caller indefinitely.
+RATE_LIMIT_RETRIES = 3
+RATE_LIMIT_BACKOFF_SECONDS = 5.0
+MAX_RETRY_AFTER_SECONDS = 60.0
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Return the Retry-After delay in seconds, if it is a usable number."""
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except ValueError:
+        return None  # HTTP-date form; fall back to the backoff schedule
+    if seconds <= 0:
+        return None
+    return min(seconds, MAX_RETRY_AFTER_SECONDS)
 
 
 def normalize_stockroom_host(host: str) -> str:
@@ -43,6 +68,11 @@ class StockroomNotFoundError(StockroomApiError):
 
 class StockroomRateLimitError(StockroomApiError):
     """Stockroom rate limit exceeded (HTTP 429)."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        """Store the message and how long Stockroom asked us to wait."""
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class StockroomValidationError(StockroomApiError):
@@ -129,7 +159,45 @@ class StockroomApiClient:
         params: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
     ) -> Any:
-        """Execute a request against the Stockroom API and map errors."""
+        """Execute a request against the Stockroom API and map errors.
+
+        A 429 is retried after the delay Stockroom asks for. Bulk actions like
+        the repair flow walk every linked item, which can outrun the per-token
+        rate limit; failing the whole action on the first 429 would leave the
+        work half-applied.
+        """
+        for attempt in range(RATE_LIMIT_RETRIES + 1):
+            try:
+                return await self._async_attempt_request(
+                    method,
+                    path,
+                    error_context=error_context,
+                    params=params,
+                    payload=payload,
+                )
+            except StockroomRateLimitError as err:
+                if attempt >= RATE_LIMIT_RETRIES:
+                    raise
+                delay = err.retry_after or RATE_LIMIT_BACKOFF_SECONDS * (2**attempt)
+                _LOGGER.debug(
+                    "Stockroom rate limit hit on %s %s, retrying in %ss",
+                    method,
+                    path,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    async def _async_attempt_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        error_context: str,
+        params: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> Any:
+        """Execute a single request against the Stockroom API and map errors."""
         url = self._api_url.join(URL(path))
 
         try:
@@ -159,7 +227,10 @@ class StockroomApiClient:
                     raise StockroomValidationError(message, errors)
                 if response.status == HTTPStatus.TOO_MANY_REQUESTS:
                     raise StockroomRateLimitError(
-                        "Stockroom rate limit exceeded (HTTP 429)."
+                        "Stockroom rate limit exceeded (HTTP 429).",
+                        retry_after=_parse_retry_after(
+                            response.headers.get(RETRY_AFTER)
+                        ),
                     )
                 if response.status >= HTTPStatus.BAD_REQUEST:
                     detail = await self._extract_error_detail(response)
